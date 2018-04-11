@@ -1,0 +1,28 @@
+import RPi.GPIO as GPIO
+import time
+
+GPIO.setmode(GPIO.BCM)
+
+# pin 13 is button sensing
+button = 13
+GPIO.setup(button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+# pin 21 is for led
+led = 21
+GPIO.setup(led, GPIO.OUT)
+
+try:
+	while True:
+		input_state = GPIO.input(button)
+		if input_state == False:
+			print('Button Pressed')
+			time.sleep(0.2)
+			GPIO.output(led, 1)
+
+		else:
+			GPIO.output(led, 0)
+except:
+	print "error or signal interrupt"
+
+finally:
+	GPIO.cleanup()
