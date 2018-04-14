@@ -26,7 +26,7 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
-#define MAXDATASIZE 50
+#define MAXDATASIZE 20
 #define BACKLOG 10
 
 // handler to deal with zombies from Beej's guide
@@ -200,9 +200,23 @@ int main(int argc, char *argv[])
 			
 		if (!fork()) {
 			close(listen_fd);
-			if (send(new_fd, "Hello, world!", 13, 0) == -1) {
-				perror("send");
+			while (1) {
+				memset(&buf, '\0', sizeof buf);
+				numbytes = recv(new_fd, buf, MAXDATASIZE-1, 0);
+				
+				if (strcmp(buf, "sound") == 0) {
+					printf("sound event\n");
+					send(new_fd, "rec", 3, 0);
+				} 
+				else if (strcmp(buf, "disconnect") == 0) {
+					break;
+				}
+				else {
+					send(new_fd, "error", 5, 0);
+				}
 			}
+
+			printf("Closing connection from %s\n", s);
 			close(new_fd);
 			exit(0);
 		}

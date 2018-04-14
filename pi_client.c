@@ -20,6 +20,7 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include "gpio_driver.h"
 
 #define MAXDATASIZE 600
 
@@ -150,40 +151,78 @@ void messaging(int sockfd, char *handle) {
     }
 }
 
+void sendEvent(int sockfd, char *event) {
+	// send message to server
+    int len = strlen(event);
+    int bytes_sent = send(sockfd, event, len, 0);
+}
+
+int getConfirm(int sockfd) {
+	
+	int numbytes;
+	char buf[4];
+	numbytes = recv(sockfd, buf, 3, 0);
+	buf[3] = '\0';
+	if (strcmp(buf, "rec") == 0) {
+		return 1;
+	}
+	return 0;
+}
+
+void flashLed(int led, int times) {
+
+	digitalWrite(led, 0);
+
+	for (int i = 0; i < times; ++i) {
+		digitalWrite(led, 1);
+		sleep(1);
+		digitalWrite(led, 0);
+	}
+}
+
 int main(int argc, char *argv[])
 {
-	int numbytes;
-	char buf[MAXDATASIZE];
-	/* get handle from user, limit to 10 chars
-	char handle[11];
-	printf("Enter a username: ");
-	scanf("%s", handle);
-	*/
+	char *sound = "sound";
+	char *disconnect = "disconnect";
 
 	// connect to specified server and listening port
 	int sockfd = estConnection(argv[1], argv[2]);
 
-	/* begin messaging if no connection errors
-	if (sockfd >= 0) {
-    		messaging(sockfd, handle);
+	// assign pins
+	const int red_led = 21;
+	const int sound_sensor = 12;
+	const int touch_sensor = 19;
 
-		// close messaging socket after \quit from client or server
-		closeConnection(sockfd);
+	// use /dve/gpiomem, don't need root, safer
+	pioInitGpio();
+	
+	// assign modes
+	pinMode(red_led, 1);
+	pinMode(sound_sensor, 0);
+	pinMode(touch_sensor, 0);
+
+	// flash lights
+	int i;
+	while (1) {
+		if (digitalRead(sound_sensor)) {
+			digitalWrite(red_led, 1);
+			sendEvent(sockfd, sound);
+			sleep(1);
+
+			if (getConfirm(sockfd)) {
+				digitalWrite(red_led, 0);
+			}
+			else {
+				printf("failure: sound\n");
+				flashLed(red_led, 3);
+			}
+			sleep(1);
+		}
+		if (digitalRead(touch_sensor)) {
+			sendEvent(sockfd, disconnect);
+			break;
+		}
 	}
-
-	// if connection error, return errno
-	else {
-		return sockfd;
-	}
-	*/
-
-	if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
-		perror("recv");
-		exit(1);
-	}
-	buf[numbytes] = '\0';
-	printf("%s\n", buf);
-	close(sockfd);
-
+	
 	return 0;
 }
