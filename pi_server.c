@@ -208,6 +208,10 @@ int main(int argc, char *argv[])
 					printf("sound event\n");
 					send(new_fd, "rec", 3, 0);
 				} 
+				else if (strcmp(buf, "flame") == 0) {
+					printf("flame detected\n");
+					send(new_fd, "rec", 3, 0);
+				}
 				else if (strcmp(buf, "disconnect") == 0) {
 					break;
 				}

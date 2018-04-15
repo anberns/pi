@@ -21,8 +21,10 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include "gpio_driver.h"
+#include <omp.h>
 
 #define MAXDATASIZE 600
+
 
 /******************************************************************************
 * function from Beej's Guide to fill in address structs
@@ -171,58 +173,100 @@ int getConfirm(int sockfd) {
 
 void flashLed(int led, int times) {
 
-	digitalWrite(led, 0);
 
 	for (int i = 0; i < times; ++i) {
+		digitalWrite(led, 0);
+		sleep(1);
 		digitalWrite(led, 1);
 		sleep(1);
-		digitalWrite(led, 0);
 	}
+
+	digitalWrite(led, 0);
 }
 
 int main(int argc, char *argv[])
 {
 	char *sound = "sound";
 	char *disconnect = "disconnect";
+	char *flame = "flame";
+	int end = 0; // shared varible to kill all threads before shutdown
 
 	// connect to specified server and listening port
 	int sockfd = estConnection(argv[1], argv[2]);
 
 	// assign pins
 	const int red_led = 21;
+	const int blue_led = 5;
+	const int green_led = 16;
 	const int sound_sensor = 12;
 	const int touch_sensor = 19;
+	const int flame_sensor = 13;
 
-	// use /dve/gpiomem, don't need root, safer
+	// use /dev/gpiomem, don't need root, safer
 	pioInitGpio();
 	
 	// assign modes
 	pinMode(red_led, 1);
+	pinMode(blue_led, 1);
+	pinMode(green_led, 1);
 	pinMode(sound_sensor, 0);
 	pinMode(touch_sensor, 0);
+	pinMode(flame_sensor, 0);
+	
+	digitalWrite(blue_led, 1);
 
-	// flash lights
-	int i;
-	while (1) {
-		if (digitalRead(sound_sensor)) {
-			digitalWrite(red_led, 1);
-			sendEvent(sockfd, sound);
-			sleep(1);
+	omp_set_num_threads(3);
+	#pragma omp parallel sections default(none), shared(end, sockfd, sound, flame)
+	{
+		#pragma omp section
+		{
+			while (!end) {
+				if (digitalRead(sound_sensor)) {
+					digitalWrite(red_led, 1);
+					sendEvent(sockfd, sound);
+					sleep(1);
 
-			if (getConfirm(sockfd)) {
-				digitalWrite(red_led, 0);
+					if (getConfirm(sockfd)) {
+						digitalWrite(red_led, 0);
+					}
+					else {
+						printf("failure: sound\n");
+						flashLed(red_led, 3);
+					}
+					sleep(1);
+				}
 			}
-			else {
-				printf("failure: sound\n");
-				flashLed(red_led, 3);
-			}
-			sleep(1);
 		}
-		if (digitalRead(touch_sensor)) {
-			sendEvent(sockfd, disconnect);
-			break;
+		#pragma omp section
+		{
+			while (!end) {
+				
+				if (digitalRead(flame_sensor)) {
+					digitalWrite(green_led, 1);
+					sendEvent(sockfd, flame);
+					sleep(1);
+
+					if (getConfirm(sockfd)) {
+						digitalWrite(green_led, 0);
+					}
+					else {
+						printf("failure: vib\n");
+						flashLed(green_led, 3);
+					}
+					sleep(1);
+				}
+			}
+		}
+		#pragma omp section
+		{ 
+			while(!end) {
+				if (digitalRead(touch_sensor)) {
+					end = 1;
+				}
+			}
 		}
 	}
-	
+	flashLed(blue_led, 3);
+	sendEvent(sockfd, disconnect);
 	return 0;
 }
