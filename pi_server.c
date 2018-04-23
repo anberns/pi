@@ -25,6 +25,7 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <wiringPiI2C.h>
 
 #define MAXDATASIZE 20
 #define BACKLOG 10
@@ -200,16 +201,24 @@ int main(int argc, char *argv[])
 			
 		if (!fork()) {
 			close(listen_fd);
+			
+			// set up lcd
+			int lcd_fd = wiringPiI2CSetup(0x3c);
+			if (lcd_fd == -1) {
+				printf("lcd setup error\n");
+			}
+
 			while (1) {
 				memset(&buf, '\0', sizeof buf);
 				numbytes = recv(new_fd, buf, MAXDATASIZE-1, 0);
 				
 				if (strcmp(buf, "sound") == 0) {
 					printf("sound event\n");
+					wiringPiI2CWrite(lcd_fd, 1);
 					send(new_fd, "rec", 3, 0);
 				} 
-				else if (strcmp(buf, "flame") == 0) {
-					printf("flame detected\n");
+				else if (strcmp(buf, "motion") == 0) {
+					printf("motion detected\n");
 					send(new_fd, "rec", 3, 0);
 				}
 				else if (strcmp(buf, "disconnect") == 0) {

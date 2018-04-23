@@ -189,6 +189,8 @@ int main(int argc, char *argv[])
 	char *sound = "sound";
 	char *disconnect = "disconnect";
 	char *flame = "flame";
+	char *motion = "motion";
+
 	int end = 0; // shared varible to kill all threads before shutdown
 
 	// connect to specified server and listening port
@@ -200,7 +202,7 @@ int main(int argc, char *argv[])
 	const int green_led = 16;
 	const int sound_sensor = 12;
 	const int touch_sensor = 19;
-	const int flame_sensor = 13;
+	const int motion_sensor = 13;
 
 	// use /dev/gpiomem, don't need root, safer
 	pioInitGpio();
@@ -211,12 +213,12 @@ int main(int argc, char *argv[])
 	pinMode(green_led, 1);
 	pinMode(sound_sensor, 0);
 	pinMode(touch_sensor, 0);
-	pinMode(flame_sensor, 0);
+	pinMode(motion_sensor, 0);
 	
 	digitalWrite(blue_led, 1);
 
 	omp_set_num_threads(3);
-	#pragma omp parallel sections default(none), shared(end, sockfd, sound, flame)
+	#pragma omp parallel sections default(none), shared(end, sockfd, sound, motion)
 	{
 		#pragma omp section
 		{
@@ -241,9 +243,9 @@ int main(int argc, char *argv[])
 		{
 			while (!end) {
 				
-				if (digitalRead(flame_sensor)) {
+				if (digitalRead(motion_sensor)) {
 					digitalWrite(green_led, 1);
-					sendEvent(sockfd, flame);
+					sendEvent(sockfd, motion);
 					sleep(1);
 
 					if (getConfirm(sockfd)) {
@@ -266,7 +268,9 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
-	flashLed(blue_led, 3);
-	sendEvent(sockfd, disconnect);
+	flashLed(blue_led, 1);
+	//sendEvent(sockfd, disconnect);
+	close(sockfd);
+	
 	return 0;
 }
