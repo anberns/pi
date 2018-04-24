@@ -28,9 +28,7 @@
 #define MAXDATASIZE 600
 
 
-/******************************************************************************
-* function from Beej's Guide to fill in address structs
-******************************************************************************/
+// connection functions from Beej's Guide 
 
 void *get_in_addr(struct sockaddr *sa)
 {
@@ -40,11 +38,6 @@ void *get_in_addr(struct sockaddr *sa)
 
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
-
-/******************************************************************************
-* connection function, passed host name and port number, returns sockfd
-* most of function from Beej's Guide
-******************************************************************************/
 
 int estConnection(char *host, char *port) {
     int sockfd;
@@ -89,70 +82,8 @@ int estConnection(char *host, char *port) {
     return sockfd;
 }
 
-/******************************************************************************
-* close connection function, passed sockfd
-******************************************************************************/
-
 void closeConnection(int sockfd) {
     close(sockfd);
-}
-
-/******************************************************************************
-* messaging function, passed sockfd for connection and user handle
-* Gets message from user, sends to server, gets response and prints to screen.
-* Repeats until user enters or server returns "\quit".
-******************************************************************************/
-
-void messaging(int sockfd, char *handle) {
-    int numbytes, len, bytes_sent;
-    char buf[MAXDATASIZE]; // stores server response
-    char *input = NULL; // for getline(), user input
-    char fullInput[650]; // for input and handle to sent to server
-    size_t bufferSize = 0;
-    int numChars = -5;
-
-    // clear \n from buffer
-    // help from stackoverflow questions 7898215
-    char c;
-    while ((c = getchar()) != '\n' && c != EOF) { }
-
-    while(1) {
-        
-	// print user prompt
-        printf("%s%s", handle, "> ");
-
-        // get user input
-        // help from cs344 lecture by Brewster
-        numChars = getline(&input, &bufferSize, stdin);
-
-        // check for "\quit" command from client
-        if (strcmp(input, "\\quit\n") == 0) {
-            break;
-        }
-
-        // add handle to outgoing message
-        // help from stackoverflow question 308695
-        snprintf(fullInput, sizeof fullInput, "%s%s%s", handle, "> ", input);
-
-	// send message to server
-        len = strlen(fullInput);
-        bytes_sent = send(sockfd, fullInput, len, 0);
-        free(input);
-        input = NULL;
-
-	// get server response
-        numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0);
-        buf[numbytes] = '\0';
-
-        // check for "\quit" command from server
-        if (strcmp(buf, "\\quit") == 0) {
-            break;
-        }
-
-	// print server response
-        printf("%s", buf);
-        printf("%s", "\n");
-    }
 }
 
 void sendEvent(int sockfd, char *event) {
@@ -206,6 +137,8 @@ int main(int argc, char *argv[])
 	const int touch_sensor = 19;
 	const int motion_sensor = 13;
 
+
+
 	// use /dev/gpiomem, don't need root, safer
 	pioInitGpio();
 	
@@ -219,32 +152,42 @@ int main(int argc, char *argv[])
 
 	digitalWrite(blue_led, 1);
 
-	omp_set_num_threads(3);
+	omp_set_num_threads(4);
 	#pragma omp parallel sections default(none), shared(end, sockfd, sound, motion)
 	{
+
 		#pragma omp section
 		{
-			// set up temp sensor, help from bradsrpi.blogspot.com
+			// variables for temp sensor, help from bradsrpi.blogspot.com
 			char buf[256];
 			char tmpData[6];
 			char path[] = "/sys/bus/w1/devices/28-051693b4daff/w1_slave";
 			ssize_t numRead;
+			float temp;
+			char message[13];
+			memset(&message, sizeof message, '\0');
+			char oldMessage[13];
+			memset(&oldMessage, sizeof oldMessage, '\0');
 
+			int fd;
 			while (!end) {
-				int fd = open(path, O_RDONLY);
-				if (fd == -1) {
-					perror("w1 device");
-				} else {
-					while((numRead = read(fd, buf, 256)) > 0) {
-						strncpy(tmpData, strstr(buf, "t=") + 2, 5); 
-						float tempC = strtof(tmpData, NULL);
-						printf("Temp: %.3f C  ", tempC / 1000);
-						printf("%.3f F\n\n", (tempC / 1000) * 9 / 5 + 32);
-					}
+				fd = open(path, O_RDONLY);
+				while ((numRead = read(fd, buf, 256)) > 0) {
+					strncpy(tmpData, strstr(buf, "t=") +2, 5); 
+					temp = strtof(tmpData, NULL);
+					temp = (temp / 1000) * (9/5) + 32;
+					sprintf(message, "temp %.1f F", temp);
+				}
+
+				if (strcmp(message, oldMessage) != 0) {
+					sendEvent(sockfd, message);
+					strcpy(oldMessage, message);
 				}
 				close(fd);
+				sleep(2);
 			}
 		}
+
 
 		#pragma omp section
 		{
@@ -253,7 +196,8 @@ int main(int argc, char *argv[])
 					digitalWrite(red_led, 1);
 					sendEvent(sockfd, sound);
 					sleep(1);
-
+					digitalWrite(red_led, 0);
+					/*
 					if (getConfirm(sockfd)) {
 						digitalWrite(red_led, 0);
 					}
@@ -262,6 +206,7 @@ int main(int argc, char *argv[])
 						flashLed(red_led, 3);
 					}
 					sleep(1);
+					*/
 				}
 			}
 		}
@@ -273,7 +218,8 @@ int main(int argc, char *argv[])
 					digitalWrite(green_led, 1);
 					sendEvent(sockfd, motion);
 					sleep(1);
-
+					digitalWrite(green_led, 0);
+					/*
 					if (getConfirm(sockfd)) {
 						digitalWrite(green_led, 0);
 					}
@@ -282,6 +228,7 @@ int main(int argc, char *argv[])
 						flashLed(green_led, 3);
 					}
 					sleep(1);
+					*/
 				}
 			}
 		}
@@ -295,7 +242,7 @@ int main(int argc, char *argv[])
 		}
 	}
 	flashLed(blue_led, 1);
-	//sendEvent(sockfd, disconnect);
+	sendEvent(sockfd, disconnect);
 	close(sockfd);
 	
 	return 0;

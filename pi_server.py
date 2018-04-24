@@ -36,6 +36,8 @@ ztop1 = zbottom0+8
 zbottom1 = ztop1+8
 ztop2 = zbottom1+2 
 zbottom2 = ztop2+8
+ztop3 = zbottom2+2 
+zbottom3 = ztop3+8
 bottom = height 
 x=0
 
@@ -47,41 +49,53 @@ serverSocket = socket(AF_INET, SOCK_STREAM)
 serverSocket.bind(('', int(sys.argv[1]))) 
 serverSocket.listen(1)
 
+def updateTemp(temp):
+	print (temp)
+
+	lock.acquire()
+	draw.rectangle((0,ztop1,width,zbottom1), outline=0, fill=0)
+	draw.text((x, ztop1), temp, font=font, fill=255)
+	disp.image(image)
+	disp.display()
+	lock.release()
+
+	#connectionSocket.send(("rec").encode())
+
 def soundEvent():
 	print ("sound")
 
 	lock.acquire()
-	draw.rectangle((0,ztop1,width,zbottom1), outline=0, fill=0)
-	draw.text((x, ztop1), "sound", font=font, fill=255)
+	draw.rectangle((0,ztop2,width,zbottom2), outline=0, fill=0)
+	draw.text((x, ztop2), "sound", font=font, fill=255)
 	disp.image(image)
 	disp.display()
 	lock.release()
 	time.sleep(2)
 	lock.acquire()
-	draw.rectangle((0,ztop1,width,zbottom1), outline=0, fill=0)
+	draw.rectangle((0,ztop2,width,zbottom2), outline=0, fill=0)
 	disp.image(image)
 	disp.display()
 	lock.release()
 
-	connectionSocket.send(("rec").encode())
+	#connectionSocket.send(("rec").encode())
 
 def motionEvent():
 	print ("motion")
 
 	lock.acquire()
-	draw.rectangle((0,ztop2,width,zbottom2), outline=0, fill=0)
-	draw.text((x, ztop2), "motion", font=font, fill=255)
+	draw.rectangle((0,ztop3,width,zbottom3), outline=0, fill=0)
+	draw.text((x, ztop3), "motion", font=font, fill=255)
 	disp.image(image)
 	disp.display()
 	lock.release()
 	time.sleep(2)
 	lock.acquire()
-	draw.rectangle((0,ztop2,width,zbottom2), outline=0, fill=0)		
+	draw.rectangle((0,ztop3,width,zbottom3), outline=0, fill=0)		
 	disp.image(image)
 	disp.display()
 	lock.release()
 
-	connectionSocket.send(("rec").encode())
+	#connectionSocket.send(("rec").encode())
 
 # loop through connections from listening port until CTRL-C
 while 1:
@@ -101,7 +115,10 @@ while 1:
 		message = connectionSocket.recv(1024).decode()
 	
 		# sensor concurrency
-		if message == "sound":
+		if 'temp' in message:
+			thread.start_new_thread(updateTemp, (message,))
+
+		elif message == "sound":
 			thread.start_new_thread(soundEvent, ())
 
 		elif message == "motion":
@@ -110,8 +127,8 @@ while 1:
 		elif message == "disconnect":
 			break
 		
-		else:
-			connectionSocket.send(("error").encode())
+		#else:
+			#connectionSocket.send(("error").encode())
 		
 
 	# close connection but not server process
