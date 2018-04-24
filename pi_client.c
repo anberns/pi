@@ -22,6 +22,8 @@
 #include <arpa/inet.h>
 #include "gpio_driver.h"
 #include <omp.h>
+#include <dirent.h>
+#include <fcntl.h>
 
 #define MAXDATASIZE 600
 
@@ -214,12 +216,36 @@ int main(int argc, char *argv[])
 	pinMode(sound_sensor, 0);
 	pinMode(touch_sensor, 0);
 	pinMode(motion_sensor, 0);
-	
+
 	digitalWrite(blue_led, 1);
 
 	omp_set_num_threads(3);
 	#pragma omp parallel sections default(none), shared(end, sockfd, sound, motion)
 	{
+		#pragma omp section
+		{
+			// set up temp sensor, help from bradsrpi.blogspot.com
+			char buf[256];
+			char tmpData[6];
+			char path[] = "/sys/bus/w1/devices/28-051693b4daff/w1_slave";
+			ssize_t numRead;
+
+			while (!end) {
+				int fd = open(path, O_RDONLY);
+				if (fd == -1) {
+					perror("w1 device");
+				} else {
+					while((numRead = read(fd, buf, 256)) > 0) {
+						strncpy(tmpData, strstr(buf, "t=") + 2, 5); 
+						float tempC = strtof(tmpData, NULL);
+						printf("Temp: %.3f C  ", tempC / 1000);
+						printf("%.3f F\n\n", (tempC / 1000) * 9 / 5 + 32);
+					}
+				}
+				close(fd);
+			}
+		}
+
 		#pragma omp section
 		{
 			while (!end) {
