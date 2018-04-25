@@ -10,8 +10,10 @@ from PIL import Image
 from PIL import ImageDraw
 from PIL import ImageFont
 
-# thread lock
-lock = threading.Lock()
+# thread locks
+led_lock = threading.Lock()
+count_lock = threading.Lock()
+event_lock = threading.Lock()
 
 # setup lcd, from Adafruit_Python_SSD1306
 RST = None
@@ -38,6 +40,8 @@ ztop2 = zbottom1+2
 zbottom2 = ztop2+8
 ztop3 = zbottom2+2 
 zbottom3 = ztop3+8
+ztop4 = zbottom3+2 
+zbottom4 = ztop4+8
 bottom = height 
 x=0
 
@@ -49,53 +53,120 @@ serverSocket = socket(AF_INET, SOCK_STREAM)
 serverSocket.bind(('', int(sys.argv[1]))) 
 serverSocket.listen(1)
 
+# array for holding message counts
+count_array = [0,0,0]
+smoke_index = 0
+sound_index = 1
+motion_index = 2
+
+# global emergency flags
+smoke_emer = 0
+sound_emer = 0
+motion_emer = 0
+smoke_event = 0
+sound_event = 0
+motion_event = 0
+
+
 def updateTemp(temp):
 	print (temp)
 
-	lock.acquire()
+	led_lock.acquire()
 	draw.rectangle((0,ztop1,width,zbottom1), outline=0, fill=0)
 	draw.text((x, ztop1), temp, font=font, fill=255)
 	disp.image(image)
 	disp.display()
-	lock.release()
+	led_lock.release()
 
 	#connectionSocket.send(("rec").encode())
 
 def soundEvent():
 	print ("sound")
 
-	lock.acquire()
+	led_lock.acquire()
 	draw.rectangle((0,ztop2,width,zbottom2), outline=0, fill=0)
 	draw.text((x, ztop2), "sound", font=font, fill=255)
 	disp.image(image)
 	disp.display()
-	lock.release()
+	led_lock.release()
 	time.sleep(2)
-	lock.acquire()
+	led_lock.acquire()
 	draw.rectangle((0,ztop2,width,zbottom2), outline=0, fill=0)
 	disp.image(image)
 	disp.display()
-	lock.release()
+	led_lock.release()
+
+	#connectionSocket.send(("rec").encode())
+
+def smokeEvent():
+	print ("smoke")
+	global smoke_event
+
+	led_lock.acquire()
+	draw.rectangle((0,ztop4,width,zbottom4), outline=0, fill=0)
+	draw.text((x, ztop4), "smoke", font=font, fill=255)
+	disp.image(image)
+	disp.display()
+	led_lock.release()
+	time.sleep(2)
+	led_lock.acquire()
+	draw.rectangle((0,ztop4,width,zbottom4), outline=0, fill=0)
+	disp.image(image)
+	disp.display()
+	led_lock.release()
+
+	if messageCount(5, smoke_index, 5) == 1:
+		
+		# add alarm here
+
+		led_lock.acquire()
+		draw.rectangle((0,ztop4,width,zbottom4), outline=0, fill=0)
+		draw.text((x, ztop4), "SMOKE EMERGENCY", font=font, fill=255)
+		disp.image(image)
+		disp.display()
+		led_lock.release()
+
+		# add some alarm release mechanism here
+
+	else:
+		event_lock.acquire()
+		smoke_event = 0
+		event_lock.release()
+
 
 	#connectionSocket.send(("rec").encode())
 
 def motionEvent():
 	print ("motion")
 
-	lock.acquire()
+	led_lock.acquire()
 	draw.rectangle((0,ztop3,width,zbottom3), outline=0, fill=0)
 	draw.text((x, ztop3), "motion", font=font, fill=255)
 	disp.image(image)
 	disp.display()
-	lock.release()
+	led_lock.release()
 	time.sleep(2)
-	lock.acquire()
+	led_lock.acquire()
 	draw.rectangle((0,ztop3,width,zbottom3), outline=0, fill=0)		
 	disp.image(image)
 	disp.display()
-	lock.release()
+	led_lock.release()
 
 	#connectionSocket.send(("rec").encode())
+
+def messageCount(sleep_time, index, value):
+	time.sleep(sleep_time)
+	count_lock.acquire()
+	
+	if count_array[index] >= value:
+		count_array[index] = 0
+		count_lock.release()
+		return 1
+
+	else:
+		count_array[index] = 0
+		count_lock.release()
+		return 0
 
 # loop through connections from listening port until CTRL-C
 while 1:
@@ -113,10 +184,28 @@ while 1:
 
 	while(1):
 		message = connectionSocket.recv(1024).decode()
+		print(message)
 	
 		# sensor concurrency
 		if 'temp' in message:
 			thread.start_new_thread(updateTemp, (message,))
+
+		elif message == "smoke":
+			print ("in")
+			event_lock.acquire()
+			print ("acquired")
+			print (smoke_event)
+
+			if smoke_event == 0:
+				smoke_event = 1
+				event_lock.release()
+				thread.start_new_thread(smokeEvent, ())
+
+			else:
+				event_lock.release()
+				count_lock.acquire()
+				count_array[0] += 1
+				count_lock.release()
 
 		elif message == "sound":
 			thread.start_new_thread(soundEvent, ())

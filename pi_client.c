@@ -121,7 +121,7 @@ int main(int argc, char *argv[])
 {
 	char *sound = "sound";
 	char *disconnect = "disconnect";
-	char *flame = "flame";
+	char *smoke = "smoke";
 	char *motion = "motion";
 
 	int end = 0; // shared varible to kill all threads before shutdown
@@ -130,12 +130,14 @@ int main(int argc, char *argv[])
 	int sockfd = estConnection(argv[1], argv[2]);
 
 	// assign pins
-	const int red_led = 21;
-	const int blue_led = 5;
-	const int green_led = 16;
+	const int red_led = 21; // smoke
+	const int blue_led = 5; // power
+	const int green_led = 16; // motion
+	const int yellow_led = 20; // sound
 	const int sound_sensor = 12;
 	const int touch_sensor = 19;
 	const int motion_sensor = 13;
+	const int smoke_sensor = 6;
 
 
 
@@ -146,14 +148,16 @@ int main(int argc, char *argv[])
 	pinMode(red_led, 1);
 	pinMode(blue_led, 1);
 	pinMode(green_led, 1);
+	pinMode(yellow_led, 1);
 	pinMode(sound_sensor, 0);
 	pinMode(touch_sensor, 0);
 	pinMode(motion_sensor, 0);
+	pinMode(smoke_sensor, 0);
 
 	digitalWrite(blue_led, 1);
 
-	omp_set_num_threads(4);
-	#pragma omp parallel sections default(none), shared(end, sockfd, sound, motion)
+	omp_set_num_threads(5);
+	#pragma omp parallel sections default(none), shared(end, sockfd, smoke, sound, motion)
 	{
 
 		#pragma omp section
@@ -193,17 +197,17 @@ int main(int argc, char *argv[])
 		{
 			while (!end) {
 				if (digitalRead(sound_sensor)) {
-					digitalWrite(red_led, 1);
+					digitalWrite(yellow_led, 1);
 					sendEvent(sockfd, sound);
 					sleep(1);
-					digitalWrite(red_led, 0);
+					digitalWrite(yellow_led, 0);
 					/*
 					if (getConfirm(sockfd)) {
-						digitalWrite(red_led, 0);
+						digitalWrite(yellow_led, 0);
 					}
 					else {
 						printf("failure: sound\n");
-						flashLed(red_led, 3);
+						flashLed(yellow_led, 3);
 					}
 					sleep(1);
 					*/
@@ -226,6 +230,29 @@ int main(int argc, char *argv[])
 					else {
 						printf("failure: vib\n");
 						flashLed(green_led, 3);
+					}
+					sleep(1);
+					*/
+				}
+			}
+		}
+
+		#pragma omp section
+		{
+			while (!end) {
+				
+				if (digitalRead(smoke_sensor)) {
+					digitalWrite(red_led, 1);
+					sendEvent(sockfd, smoke);
+					sleep(1);
+					digitalWrite(red_led, 0);
+					/*
+					if (getConfirm(sockfd)) {
+						digitalWrite(red_led, 0);
+					}
+					else {
+						printf("failure: vib\n");
+						flashLed(red_led, 3);
 					}
 					sleep(1);
 					*/
