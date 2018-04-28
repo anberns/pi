@@ -24,6 +24,7 @@
 #include <omp.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <time.h>
 
 #define MAXDATASIZE 600
 
@@ -156,10 +157,10 @@ int main(int argc, char *argv[])
 
 	digitalWrite(blue_led, 1);
 
-	omp_set_num_threads(5);
+
+	omp_set_num_threads(6);
 	#pragma omp parallel sections default(none), shared(end, sockfd, smoke, sound, motion)
 	{
-
 		#pragma omp section
 		{
 			// variables for temp sensor, help from bradsrpi.blogspot.com
@@ -191,8 +192,6 @@ int main(int argc, char *argv[])
 				sleep(2);
 			}
 		}
-
-
 		#pragma omp section
 		{
 			while (!end) {
@@ -201,16 +200,7 @@ int main(int argc, char *argv[])
 					sendEvent(sockfd, sound);
 					sleep(1);
 					digitalWrite(yellow_led, 0);
-					/*
-					if (getConfirm(sockfd)) {
-						digitalWrite(yellow_led, 0);
-					}
-					else {
-						printf("failure: sound\n");
-						flashLed(yellow_led, 3);
-					}
-					sleep(1);
-					*/
+		
 				}
 			}
 		}
@@ -223,16 +213,7 @@ int main(int argc, char *argv[])
 					sendEvent(sockfd, motion);
 					sleep(1);
 					digitalWrite(green_led, 0);
-					/*
-					if (getConfirm(sockfd)) {
-						digitalWrite(green_led, 0);
-					}
-					else {
-						printf("failure: vib\n");
-						flashLed(green_led, 3);
-					}
-					sleep(1);
-					*/
+		
 				}
 			}
 		}
@@ -246,16 +227,6 @@ int main(int argc, char *argv[])
 					sendEvent(sockfd, smoke);
 					sleep(1);
 					digitalWrite(red_led, 0);
-					/*
-					if (getConfirm(sockfd)) {
-						digitalWrite(red_led, 0);
-					}
-					else {
-						printf("failure: vib\n");
-						flashLed(red_led, 3);
-					}
-					sleep(1);
-					*/
 				}
 			}
 		}

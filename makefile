@@ -21,4 +21,7 @@ pi_server: pi_server.c
 	gcc -o pi_server pi_server.c gpio_driver.c -lwiringPi
 
 pi_client: pi_client.c
-	gcc -o pi_client pi_client.c gpio_driver.c -lm -fopenmp
+	gcc -o pi_client pi_client.c gpio_driver.c -lm -fopenmp 
+
+pi_client_poll: pi_client_poll.c
+	gcc -o pi_client_poll pi_client_poll.c gpio_driver.c -lm -fopenmp 

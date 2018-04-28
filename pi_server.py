@@ -104,35 +104,21 @@ def smokeEvent():
 
 	led_lock.acquire()
 	draw.rectangle((0,ztop4,width,zbottom4), outline=0, fill=0)
-	draw.text((x, ztop4), "smoke", font=font, fill=255)
+	draw.text((x, ztop4), "SMOKE EMERGENCY", font=font, fill=255)
 	disp.image(image)
 	disp.display()
 	led_lock.release()
-	time.sleep(2)
+
+	# buzzer needed
+
+	while smoke_event:
+		time.sleep(2)
+
 	led_lock.acquire()
 	draw.rectangle((0,ztop4,width,zbottom4), outline=0, fill=0)
 	disp.image(image)
 	disp.display()
 	led_lock.release()
-
-	if messageCount(5, smoke_index, 5) == 1:
-		
-		# add alarm here
-
-		led_lock.acquire()
-		draw.rectangle((0,ztop4,width,zbottom4), outline=0, fill=0)
-		draw.text((x, ztop4), "SMOKE EMERGENCY", font=font, fill=255)
-		disp.image(image)
-		disp.display()
-		led_lock.release()
-
-		# add some alarm release mechanism here
-
-	else:
-		event_lock.acquire()
-		smoke_event = 0
-		event_lock.release()
-
 
 	#connectionSocket.send(("rec").encode())
 
@@ -154,20 +140,6 @@ def motionEvent():
 
 	#connectionSocket.send(("rec").encode())
 
-def messageCount(sleep_time, index, value):
-	time.sleep(sleep_time)
-	count_lock.acquire()
-	
-	if count_array[index] >= value:
-		count_array[index] = 0
-		count_lock.release()
-		return 1
-
-	else:
-		count_array[index] = 0
-		count_lock.release()
-		return 0
-
 # loop through connections from listening port until CTRL-C
 while 1:
 	
@@ -183,18 +155,16 @@ while 1:
 	disp.display()
 
 	while(1):
+
 		message = connectionSocket.recv(1024).decode()
-		print(message)
 	
 		# sensor concurrency
 		if 'temp' in message:
 			thread.start_new_thread(updateTemp, (message,))
 
 		elif message == "smoke":
-			print ("in")
+
 			event_lock.acquire()
-			print ("acquired")
-			print (smoke_event)
 
 			if smoke_event == 0:
 				smoke_event = 1
@@ -202,10 +172,8 @@ while 1:
 				thread.start_new_thread(smokeEvent, ())
 
 			else:
+				smoke_event = 0
 				event_lock.release()
-				count_lock.acquire()
-				count_array[0] += 1
-				count_lock.release()
 
 		elif message == "sound":
 			thread.start_new_thread(soundEvent, ())
