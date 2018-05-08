@@ -253,8 +253,7 @@ int main(int argc, char *argv[])
 
 	int end = 0; // shared varible to kill all threads before shutdown
 
-	// connect to specified server and listening port
-	int sockfd = estConnection(argv[1], argv[2]);
+
 
 	// assign pins
 	const int red_led = 21; // smoke
@@ -312,8 +311,31 @@ int main(int argc, char *argv[])
 	char *buf[MAX_BUF];
 	int len;
 
-	gpio_set_value(blue_led, 1);
+	gpio_set_value(blue_led, 0);
 	gpio_set_value(red_led, 0);
+
+	// attempt to connect to specified server and listening port
+	// exit if unable after 10 tries
+	int sockfd = -1;
+	int attempts = 0;
+	do {
+		sockfd = estConnection(argv[1], argv[2]);
+		if (sockfd < 0) {
+			gpio_set_value(blue_led, 1);
+			sleep(1);
+			gpio_set_value(blue_led, 0);
+			sleep(1);
+			++attempts;
+		}
+		else {
+			gpio_set_value(blue_led, 1);
+		}
+
+	} while (sockfd < 0 && attempts < 10);
+
+	if (sockfd < 0) {
+		exit(1);
+	}
 
 	omp_set_num_threads(6);
 	#pragma omp parallel sections default(none), private(pfd, rc, buf), shared(nfds, end, sockfd, smoke, sound, motion, red_fd, blue_fd, green_fd, yellow_fd, sound_fd, touch_fd, motion_fd, smoke_fd)
