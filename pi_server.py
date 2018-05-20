@@ -1,5 +1,6 @@
 # Aaron Berns
 
+import os
 import thread
 import threading
 from socket import *
@@ -9,11 +10,13 @@ import Adafruit_SSD1306
 from PIL import Image
 from PIL import ImageDraw
 from PIL import ImageFont
+import RPi.GPIO as GPIO
 
 # thread locks
 led_lock = threading.Lock()
 count_lock = threading.Lock()
 event_lock = threading.Lock()
+global_var_lock = threading.Lock()
 
 # setup lcd, from Adafruit_Python_SSD1306
 RST = None
@@ -67,9 +70,45 @@ smoke_event = 0
 sound_event = 0
 motion_event = 0
 
+# global temperature variable
+global current_temp
+
+# global select pressed variable
+global select_pressed
+
+# global settings variables
+global temp_low 
+global temp_high
+global sound_level
+global motion_level
+
+# buzzer setup
+buzzer = 18
+GPIO.setup(buzzer, GPIO.OUT)
+GPIO.output(buzzer, True)
+
+# buttons
+select_button = 19
+GPIO.setup(select_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+left_button = 13
+GPIO.setup(left_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+up_button = 6
+GPIO.setup(up_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+down_button = 21
+GPIO.setup(down_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+right_button = 5
+GPIO.setup(right_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
 def updateTemp(temp):
 	print (temp)
+	global_var_lock.acquire()
+	global current_temp 
+	current_temp = temp
+	global_var_lock.release()
 
 	led_lock.acquire()
 	draw.rectangle((0,ztop1,width,zbottom1), outline=0, fill=0)
@@ -109,10 +148,11 @@ def smokeEvent():
 	disp.display()
 	led_lock.release()
 
-	# buzzer needed
-
 	while smoke_event:
-		time.sleep(2)
+		GPIO.output(buzzer, False)
+		time.sleep(1)
+		GPIO.output(buzzer, True)
+		time.sleep(1)
 
 	led_lock.acquire()
 	draw.rectangle((0,ztop4,width,zbottom4), outline=0, fill=0)
@@ -140,11 +180,249 @@ def motionEvent():
 
 	#connectionSocket.send(("rec").encode())
 
+def runSelect():
+	y_loc = 0 # pointer begins on low temp
+	global current_temp
+	global select_pressed
+	led_lock.acquire()
+		
+	displaySettings(y_loc)
+
+	# select button exits settings
+	while GPIO.input(left_button) != 1:
+
+		if GPIO.input(up_button):
+			time.sleep(.05)
+			if y_loc > 0:
+				y_loc = y_loc -1
+				displaySettings(y_loc)
+		elif GPIO.input(down_button):
+			time.sleep(.05)
+			if y_loc < 3:
+				y_loc = y_loc +1
+				displaySettings(y_loc)
+
+		elif GPIO.input(right_button):
+			time.sleep(.05)
+			if y_loc == 0:
+				adjustLowTemp()
+			elif y_loc == 1:
+				adjustHighTemp()
+			elif y_loc == 2:
+				adjustSoundLevel()
+			elif y_loc == 3:
+				adjustMotionLevel()
+			displaySettings(y_loc)
+
+	draw.rectangle((0,0,width,height), outline=0, fill=0)
+	draw.text((x, ztop0), addr[0], font=font, fill=255)
+	global_var_lock.acquire()
+	draw.text((x, ztop1), current_temp, font=font, fill=255)
+	global_var_lock.release()
+	disp.image(image)
+	disp.display()
+	led_lock.release()
+
+def adjustLowTemp():
+	global temp_low 
+	global temp_high 
+	global sound_level 
+	global motion_level 
+
+	draw.rectangle((0,ztop0,width,zbottom4), outline=0, fill=0)
+	draw.text((x, ztop0), "Low temperature", font=font, fill=255)
+	draw.text((x, ztop1), str(temp_low), font=font, fill=255)
+	disp.image(image)
+	disp.display()
+
+	while GPIO.input(left_button) != 1:
+
+		if GPIO.input(up_button):
+			time.sleep(.05)
+			if temp_low < 125:
+				temp_low = temp_low + 1
+				draw.rectangle((0,ztop1,width,zbottom1), outline=0, fill=0)
+				draw.text((x, ztop1), str(temp_low), font=font, fill=255)
+				disp.image(image)
+				disp.display()
+		elif GPIO.input(down_button):
+			time.sleep(.05)
+			if temp_low > -25:
+				temp_low = temp_low - 1
+				draw.rectangle((0,ztop1,width,zbottom1), outline=0, fill=0)
+				draw.text((x, ztop1), str(temp_low), font=font, fill=255)
+				disp.image(image)
+				disp.display()
+
+def adjustHighTemp():
+	global temp_low 
+	global temp_high 
+	global sound_level 
+	global motion_level 
+
+	draw.rectangle((0,ztop0,width,zbottom4), outline=0, fill=0)
+	draw.text((x, ztop0), "High temperature", font=font, fill=255)
+	draw.text((x, ztop1), str(temp_high), font=font, fill=255)
+	disp.image(image)
+	disp.display()
+
+	while GPIO.input(left_button) != 1:
+
+		if GPIO.input(up_button):
+			time.sleep(.05)
+			if temp_high < 150:
+				temp_high = temp_high + 1
+				draw.rectangle((0,ztop1,width,zbottom1), outline=0, fill=0)
+				draw.text((x, ztop1), str(temp_high), font=font, fill=255)
+				disp.image(image)
+				disp.display()
+		elif GPIO.input(down_button):
+			time.sleep(.05)
+			if temp_high > -10:
+				temp_high = temp_high - 1
+				draw.rectangle((0,ztop1,width,zbottom1), outline=0, fill=0)
+				draw.text((x, ztop1), str(temp_high), font=font, fill=255)
+				disp.image(image)
+				disp.display()
+
+def adjustSoundLevel():
+	global temp_low 
+	global temp_high 
+	global sound_level 
+	global motion_level 
+
+	draw.rectangle((0,ztop0,width,zbottom4), outline=0, fill=0)
+	draw.text((x, ztop0), "Sound level", font=font, fill=255)
+	draw.text((x, ztop1), str(sound_level), font=font, fill=255)
+	disp.image(image)
+	disp.display()
+
+	while GPIO.input(left_button) != 1:
+
+		if GPIO.input(up_button):
+			time.sleep(.05)
+			if sound_level < 3:
+				sound_level = sound_level + 1
+				draw.rectangle((0,ztop1,width,zbottom1), outline=0, fill=0)
+				draw.text((x, ztop1), str(sound_level), font=font, fill=255)
+				disp.image(image)
+				disp.display()
+		elif GPIO.input(down_button):
+			time.sleep(.05)
+			if sound_level > 0:
+				sound_level = sound_level - 1
+				draw.rectangle((0,ztop1,width,zbottom1), outline=0, fill=0)
+				draw.text((x, ztop1), str(sound_level), font=font, fill=255)
+				disp.image(image)
+				disp.display()
+
+def adjustMotionLevel():
+	global temp_low 
+	global temp_high 
+	global sound_level 
+	global motion_level 
+
+	draw.rectangle((0,ztop0,width,zbottom4), outline=0, fill=0)
+	draw.text((x, ztop0), "Motion level", font=font, fill=255)
+	draw.text((x, ztop1), str(motion_level), font=font, fill=255)
+	disp.image(image)
+	disp.display()
+
+	while GPIO.input(left_button) != 1:
+
+		if GPIO.input(up_button):
+			time.sleep(.05)
+			if motion_level < 3:
+				motion_level = motion_level + 1
+				draw.rectangle((0,ztop1,width,zbottom1), outline=0, fill=0)
+				draw.text((x, ztop1), str(motion_level), font=font, fill=255)
+				disp.image(image)
+				disp.display()
+		elif GPIO.input(down_button):
+			time.sleep(.05)
+			if motion_level > 0:
+				motion_level = motion_level - 1
+				draw.rectangle((0,ztop1,width,zbottom1), outline=0, fill=0)
+				draw.text((x, ztop1), str(motion_level), font=font, fill=255)
+				disp.image(image)
+				disp.display()
+
+def displaySettings(y_loc):
+	global temp_low 
+	global temp_high 
+	global sound_level 
+	global motion_level 
+
+	if y_loc == 0:
+		draw.rectangle((0,ztop0,width,zbottom4), outline=0, fill=0)
+		draw.text((x, ztop0), "Adjust settings", font=font, fill=255)
+		draw.text((x, ztop1), "->Low temperature: " + str(temp_low), font=font, fill=255)
+		draw.text((x, ztop2), "High temperature: " + str(temp_high), font=font, fill=255)
+		draw.text((x, ztop3), "Sound sensitivity: " + str(sound_level), font=font, fill=255)
+		draw.text((x, ztop4), "Motion sensitivity: " + str(motion_level), font=font, fill=255)
+		disp.image(image)
+		disp.display()
+	elif y_loc == 1:
+		draw.rectangle((0,ztop0,width,zbottom4), outline=0, fill=0)
+		draw.text((x, ztop0), "Adjust settings", font=font, fill=255)
+		draw.text((x, ztop1), "Low temperature: " + str(temp_low), font=font, fill=255)
+		draw.text((x, ztop2), "->High temperature: " + str(temp_high), font=font, fill=255)
+		draw.text((x, ztop3), "Sound sensitivity: " + str(sound_level), font=font, fill=255)
+		draw.text((x, ztop4), "Motion sensitivity: " + str(motion_level), font=font, fill=255)
+		disp.image(image)
+		disp.display()
+	elif y_loc == 2:
+		draw.rectangle((0,ztop0,width,zbottom4), outline=0, fill=0)
+		draw.text((x, ztop0), "Adjust settings", font=font, fill=255)
+		draw.text((x, ztop1), "Low temperature: " + str(temp_low), font=font, fill=255)
+		draw.text((x, ztop2), "High temperature: " + str(temp_high), font=font, fill=255)
+		draw.text((x, ztop3), "->Sound sensitivity: " + str(sound_level), font=font, fill=255)
+		draw.text((x, ztop4), "Motion sensitivity: " + str(motion_level), font=font, fill=255)
+		disp.image(image)
+		disp.display()
+	elif y_loc == 3:
+		draw.rectangle((0,ztop0,width,zbottom4), outline=0, fill=0)
+		draw.text((x, ztop0), "Adjust settings", font=font, fill=255)
+		draw.text((x, ztop1), "Low temperature: " + str(temp_low), font=font, fill=255)
+		draw.text((x, ztop2), "High temperature: " + str(temp_high), font=font, fill=255)
+		draw.text((x, ztop3), "Sound sensitivity: " + str(sound_level), font=font, fill=255)
+		draw.text((x, ztop4), "->Motion sensitivity: " + str(motion_level), font=font, fill=255)
+		disp.image(image)
+		disp.display()
+
 # loop through connections from listening port until CTRL-C
 while 1:
 	
 	connectionSocket, addr = serverSocket.accept()
 	print ("Connection from " + addr[0])
+
+	# read from or create file for this devices settings
+	device_settings_path = "./data/" + addr[0] + "settings"
+
+	if os.path.isfile(device_settings_path):
+		infile = open(device_settings_path, "r")
+		items = infile.readline().split()
+		temp_low = int(items[0])
+		temp_high = int(items[1])
+		sound_level = int(items[2])
+		motion_level = int(items[3])
+		print (temp_low)
+		print (motion_level)
+		infile.close()
+
+	else :
+		temp_low = 50
+		temp_high = 90
+		sound_level = 2
+		motion_level = 2
+		outfile = open(device_settings_path, "w+")
+		outfile.write(str(temp_low) + " ")
+		outfile.write(str(temp_high) + " ")
+		outfile.write(str(sound_level) + " ")
+		outfile.write(str(motion_level) + " ")
+		outfile.close()
+
+	# start display and sensor reporting
 	draw.text((x, ztop0), "Hello", font=font, fill=255)
 	disp.image(image)
 	disp.display()
@@ -154,7 +432,12 @@ while 1:
 	disp.image(image)
 	disp.display()
 
+	select_pressed = 0
+
 	while(1):
+
+		if GPIO.input(right_button):
+			thread.start_new_thread(runSelect, ())
 
 		message = connectionSocket.recv(1024).decode()
 	
@@ -186,7 +469,14 @@ while 1:
 		
 		#else:
 			#connectionSocket.send(("error").encode())
-		
+	
+	# save updated settings
+	outfile = open(device_settings_path, "w")
+	outfile.write(str(temp_low) + " ")
+	outfile.write(str(temp_high) + " ")
+	outfile.write(str(sound_level) + " ")
+	outfile.write(str(motion_level) + " ")
+	outfile.close()
 
 	# close connection but not server process
 	print ("Closing connection from " + addr[0])
