@@ -297,8 +297,8 @@ int main(int argc, char *argv[])
 	}
 
 	// smoke is both
-	gpio_set_dir(sensor_array[i], 0); // 0 is in
-	gpio_set_edge(sensor_array[i], "both");
+	gpio_set_dir(sensor_array[3], 0); // 0 is in
+	gpio_set_edge(sensor_array[3], "both");
 
 	red_fd = gpio_fd_open(red_led);
 	blue_fd = gpio_fd_open(blue_led);
@@ -378,6 +378,7 @@ int main(int argc, char *argv[])
 
 		#pragma omp section
 		{
+			sleep(3);
 			while (!end) {
 				pfd[0].fd = sound_fd;
 				pfd[0].events = POLLPRI;
@@ -399,6 +400,7 @@ int main(int argc, char *argv[])
 
 		#pragma omp section
 		{
+			sleep(3);
 			while (!end) {
 				pfd[0].fd = motion_fd;
 				pfd[0].events = POLLPRI;
