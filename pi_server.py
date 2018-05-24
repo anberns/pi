@@ -72,6 +72,7 @@ motion_event = 0
 
 global current_temp # global temperature variable
 global sound_freq # global sound event 'counter'
+global motion_freq
 
 # global select pressed variable
 global select_pressed
@@ -106,34 +107,56 @@ GPIO.setup(right_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 def updateTemp(temp):
 	print (temp)
 	global current_temp
-	global temp_low 
-	global temp_high 
-
-	local_temp = float(temp[5:9])
 
 	global_var_lock.acquire()
 	current_temp = temp 
 	global_var_lock.release()
 
-	# buzz if temp out of range
-	if local_temp > float(temp_high) or local_temp < float(temp_low):
-		print(local_temp)
-		print(temp_high)
-		event_lock.acquire()
-		GPIO.output(buzzer, False)
-		time.sleep(.01)
-		GPIO.output(buzzer, True)
-		time.sleep(.01)
-		event_lock.release()
-
 	led_lock.acquire()
 	draw.rectangle((0,ztop1,width,zbottom1), outline=0, fill=0)
-	draw.text((x, ztop1), temp, font=font, fill=255)
+	draw.text((x, ztop1), current_temp, font=font, fill=255)
 	disp.image(image)
 	disp.display()
 	led_lock.release()
 
 	#connectionSocket.send(("rec").encode())
+
+def monitorTemp():
+	global current_temp
+	global temp_low 
+	global temp_high 
+
+	time.sleep(10)
+	while 1:
+		global_var_lock.acquire()
+		local_temp = current_temp
+		float_temp = float(local_temp[5:9])
+		global_var_lock.release()
+
+		# buzz if temp out of range
+		if float_temp > float(temp_high) or float_temp < float(temp_low):
+			print(local_temp)
+			print(temp_high)
+			event_lock.acquire()
+			GPIO.output(buzzer, False)
+			time.sleep(.01)
+			GPIO.output(buzzer, True)
+			time.sleep(.01)
+			event_lock.release()
+			led_lock.acquire()
+			draw.rectangle((0,ztop1,width,zbottom1), outline=0, fill=0)
+			draw.text((x, ztop1), "TEMP ALERT", font=font, fill=255)
+			disp.image(image)
+			disp.display()
+			led_lock.release()
+			time.sleep(2)
+			led_lock.acquire()
+			draw.rectangle((0,ztop1,width,zbottom1), outline=0, fill=0)
+			draw.text((x, ztop1), local_temp, font=font, fill=255)
+			disp.image(image)
+			disp.display()
+			led_lock.release()
+		time.sleep(4)
 
 def soundEvent():
 	print ("sound")
@@ -149,21 +172,8 @@ def soundEvent():
 	sound_freq = int(time.time())
 
 	# check settings for sensitivity, alert if needed
-	if local_level == 3 and elasped <= 3:
-			led_lock.acquire()
-			draw.rectangle((0,ztop2,width,zbottom2), outline=0, fill=0)
-			draw.text((x, ztop2), "SOUND ALERT", font=font, fill=255)
-			disp.image(image)
-			disp.display()
-			led_lock.release()
-			event_lock.acquire()
-			GPIO.output(buzzer, False)
-			time.sleep(.01)
-			GPIO.output(buzzer, True)
-			time.sleep(.01)
-			event_lock.release()
 
-	elif local_level == 2 and elasped <= 2:
+	if local_level == 2:
 			led_lock.acquire()
 			draw.rectangle((0,ztop2,width,zbottom2), outline=0, fill=0)
 			draw.text((x, ztop2), "SOUND ALERT", font=font, fill=255)
@@ -176,8 +186,14 @@ def soundEvent():
 			GPIO.output(buzzer, True)
 			time.sleep(.01)
 			event_lock.release()
+			time.sleep(2)
+			led_lock.acquire()
+			draw.rectangle((0,ztop2,width,zbottom2), outline=0, fill=0)		
+			disp.image(image)
+			disp.display()
+			led_lock.release()
 
-	elif local_level == 1 and elasped <= 1:
+	elif local_level == 1 and elasped <= 2:
 			led_lock.acquire()
 			draw.rectangle((0,ztop2,width,zbottom2), outline=0, fill=0)
 			draw.text((x, ztop2), "SOUND ALERT", font=font, fill=255)
@@ -190,6 +206,13 @@ def soundEvent():
 			GPIO.output(buzzer, True)
 			time.sleep(.01)
 			event_lock.release()
+			time.sleep(2)
+			led_lock.acquire()
+			draw.rectangle((0,ztop2,width,zbottom2), outline=0, fill=0)		
+			disp.image(image)
+			disp.display()
+			led_lock.release()
+	"""
 	else:
 
 		led_lock.acquire()
@@ -204,6 +227,7 @@ def soundEvent():
 		disp.image(image)
 		disp.display()
 		led_lock.release()
+		"""
 
 	#connectionSocket.send(("rec").encode())
 
@@ -243,19 +267,74 @@ def smokeEvent():
 
 def motionEvent():
 	print ("motion")
+	global motion_freq
+	global motion_level
 
-	led_lock.acquire()
-	draw.rectangle((0,ztop3,width,zbottom3), outline=0, fill=0)
-	draw.text((x, ztop3), "motion", font=font, fill=255)
-	disp.image(image)
-	disp.display()
-	led_lock.release()
-	time.sleep(2)
-	led_lock.acquire()
-	draw.rectangle((0,ztop3,width,zbottom3), outline=0, fill=0)		
-	disp.image(image)
-	disp.display()
-	led_lock.release()
+	global_var_lock.acquire()
+	local_level = motion_level
+	global_var_lock.release()
+
+	# get seconds elapsed from last event
+	elasped = int(time.time()) - motion_freq
+	motion_freq = int(time.time())
+
+	# check settings for sensitivity, alert if needed
+
+	if local_level == 2:
+			led_lock.acquire()
+			draw.rectangle((0,ztop3,width,zbottom3), outline=0, fill=0)
+			draw.text((x, ztop3), "MOTION ALERT", font=font, fill=255)
+			disp.image(image)
+			disp.display()
+			led_lock.release()
+			event_lock.acquire()
+			GPIO.output(buzzer, False)
+			time.sleep(.01)
+			GPIO.output(buzzer, True)
+			time.sleep(.01)
+			event_lock.release()
+			time.sleep(2)
+			led_lock.acquire()
+			draw.rectangle((0,ztop3,width,zbottom3), outline=0, fill=0)		
+			disp.image(image)
+			disp.display()
+			led_lock.release()
+
+	elif local_level == 1 and elasped <= 2:
+			led_lock.acquire()
+			draw.rectangle((0,ztop3,width,zbottom3), outline=0, fill=0)
+			draw.text((x, ztop3), "MOTION ALERT", font=font, fill=255)
+			disp.image(image)
+			disp.display()
+			led_lock.release()
+			event_lock.acquire()
+			GPIO.output(buzzer, False)
+			time.sleep(.01)
+			GPIO.output(buzzer, True)
+			time.sleep(.01)
+			event_lock.release()
+			led_lock.acquire()
+			time.sleep(2)
+			draw.rectangle((0,ztop3,width,zbottom3), outline=0, fill=0)		
+			disp.image(image)
+			disp.display()
+			led_lock.release()
+	"""
+	else:
+
+		led_lock.acquire()
+		draw.rectangle((0,ztop3,width,zbottom3), outline=0, fill=0)
+		draw.text((x, ztop3), "motion", font=font, fill=255)
+		disp.image(image)
+		disp.display()
+		led_lock.release()
+		time.sleep(2)
+		led_lock.acquire()
+		draw.rectangle((0,ztop3,width,zbottom3), outline=0, fill=0)		
+		disp.image(image)
+		disp.display()
+		led_lock.release()
+"""
 
 	#connectionSocket.send(("rec").encode())
 
@@ -388,7 +467,7 @@ def adjustSoundLevel():
 
 		if GPIO.input(up_button):
 			time.sleep(.05)
-			if sound_level < 3:
+			if sound_level < 2:
 				sound_level = sound_level + 1
 				draw.rectangle((0,ztop1,width,zbottom1), outline=0, fill=0)
 				draw.text((x, ztop1), str(sound_level), font=font, fill=255)
@@ -420,7 +499,7 @@ def adjustMotionLevel():
 
 		if GPIO.input(up_button):
 			time.sleep(.05)
-			if motion_level < 3:
+			if motion_level < 2:
 				motion_level = motion_level + 1
 				draw.rectangle((0,ztop1,width,zbottom1), outline=0, fill=0)
 				draw.text((x, ztop1), str(motion_level), font=font, fill=255)
@@ -523,8 +602,14 @@ while 1:
 	# settings menu thread
 	thread.start_new_thread(runSelect, ())
 
+	#temp monitoring thread
+	thread.start_new_thread(monitorTemp, ())
+
+
 	# set current time for global event variables
 	sound_freq = int(time.time())
+	motion_freq = int(time.time())
+
 	#sensor monitoring 
 	while(1):
 
