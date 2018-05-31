@@ -1,5 +1,7 @@
 /******************************************************************************
- * pi_client_poll.c
+ * pi_client_poll.c : Connects to pi_server, uses OpenMP to concurrently monitor 
+ * a variety of sensor inputs, communicating sensor events to server for 
+ * processing.
  *
  * to enable ad-hoc, uncomment changes to /etc/network/interfaces
  * to enable auto startup and shutdown, uncomment lines in ~/superscript
@@ -236,18 +238,6 @@ void sendEvent(int sockfd, char *event) {
     int bytes_sent = send(sockfd, event, len, 0);
 }
 
-int getConfirm(int sockfd) {
-	
-	int numbytes;
-	char buf[4];
-	numbytes = recv(sockfd, buf, 3, 0);
-	buf[3] = '\0';
-	if (strcmp(buf, "rec") == 0) {
-		return 1;
-	}
-	return 0;
-}
-
 int main(int argc, char *argv[])
 {
 	char *sound = "sound";
@@ -257,9 +247,7 @@ int main(int argc, char *argv[])
 
 	int end = 0; // shared varible to kill all threads before shutdown
 
-
-
-	// assign pins
+	// assign gpio pins
 	const int red_led = 21; // smoke
 	const int blue_led = 5; // power
 	const int green_led = 16; // motion
@@ -269,8 +257,10 @@ int main(int argc, char *argv[])
 	const int motion_sensor = 13;
 	const int smoke_sensor = 6;
 
+	// array for initializing pins by type
 	const int led_array[] = {21, 5, 16, 20};
 	const int sensor_array[] = {12, 19, 13, 6};
+
 	int red_fd, blue_fd, green_fd, yellow_fd, sound_fd, touch_fd, motion_fd, smoke_fd;
 	
 	// set up pin files
@@ -296,7 +286,7 @@ int main(int argc, char *argv[])
 		gpio_set_edge(sensor_array[i], "rising");
 	}
 
-	// smoke is both
+	// smoke is both, detection and end of detection
 	gpio_set_dir(sensor_array[3], 0); // 0 is in
 	gpio_set_edge(sensor_array[3], "both");
 
@@ -309,12 +299,14 @@ int main(int argc, char *argv[])
 	motion_fd = gpio_fd_open(motion_sensor);
 	smoke_fd = gpio_fd_open(smoke_sensor);
 
+	// used for polling sensor gpio files
 	struct pollfd pfd[1];
 	int nfds = 1;
 	int gpio_fd, timeout, rc;
 	char *buf[MAX_BUF];
 	int len;
 
+	// reset leds if on
 	gpio_set_value(blue_led, 0);
 	gpio_set_value(red_led, 0);
 
@@ -341,9 +333,13 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
+	// OpenMP sections used for concurrent sensor monitoring
+	omp_lock_t messageLock; // only one thread sends message to server at a time
+	omp_init_lock(&messageLock);
 	omp_set_num_threads(6);
 	#pragma omp parallel sections default(none), private(pfd, rc, buf), shared(nfds, end, sockfd, smoke, sound, motion, red_fd, blue_fd, green_fd, yellow_fd, sound_fd, touch_fd, motion_fd, smoke_fd)
 	{
+		// temp sensor thread
 		#pragma omp section
 		{
 			// variables for temp sensor, help from bradsrpi.blogspot.com
@@ -358,6 +354,8 @@ int main(int argc, char *argv[])
 			memset(&oldMessage, sizeof oldMessage, '\0');
 
 			int fd;
+
+			// check temp file every 2 seconds, send temp if it has changed
 			while (!end) {
 				fd = open(path, O_RDONLY);
 				while ((numRead = read(fd, buf2, 256)) > 0) {
@@ -368,7 +366,9 @@ int main(int argc, char *argv[])
 				}
 
 				if (strcmp(message, oldMessage) != 0) {
+					omp_set_lock(&messageLock);
 					sendEvent(sockfd, message);
+					omp_unset_lock(&messageLock);
 					strcpy(oldMessage, message);
 				}
 				close(fd);
@@ -376,9 +376,9 @@ int main(int argc, char *argv[])
 			}
 		}
 
+		// sound sensor polling thread
 		#pragma omp section
 		{
-			sleep(3);
 			while (!end) {
 				pfd[0].fd = sound_fd;
 				pfd[0].events = POLLPRI;
@@ -390,7 +390,9 @@ int main(int argc, char *argv[])
 					lseek(sound_fd, 0, SEEK_SET);
 					read(sound_fd, buf, sizeof(buf));
 					gpio_set_value(yellow_led, 1);
+					omp_set_lock(&messageLock);
 					sendEvent(sockfd, sound);
+					omp_unset_lock(&messageLock);
 					sleep(1);
 					gpio_set_value(yellow_led, 0);
 				}
@@ -398,9 +400,9 @@ int main(int argc, char *argv[])
 			}
 		}
 
+		// motion sensor polling thread
 		#pragma omp section
 		{
-			sleep(3);
 			while (!end) {
 				pfd[0].fd = motion_fd;
 				pfd[0].events = POLLPRI;
@@ -412,13 +414,16 @@ int main(int argc, char *argv[])
 					lseek(motion_fd, 0, SEEK_SET);
 					read(motion_fd, buf, sizeof(buf));
 					gpio_set_value(green_led, 1);
+					omp_set_lock(&messageLock);
 					sendEvent(sockfd, motion);
+					omp_unset_lock(&messageLock);
 					sleep(1);
 					gpio_set_value(green_led, 0);
 				}
 			}
 		}
 
+		// smoke sensor polling thread
 		#pragma omp section
 		{
 			int val;
@@ -441,13 +446,18 @@ int main(int argc, char *argv[])
 					else {
 						gpio_set_value(red_led, 1);
 					}
+
+					// send message to server for each edge change
+					omp_set_lock(&messageLock);
 					sendEvent(sockfd, smoke);
+					omp_unset_lock(&messageLock);
 					sleep(1);
 					
 				}			
 			}
 		}
 
+		// thread for button that ends program
 		#pragma omp section
 		{ 
 			while(!end) {
@@ -463,14 +473,18 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
-	//flashLed(blue_led, 1);
+
+	//flash blue led indicating shutdown
 	gpio_set_value(blue_led, 0);
 	sleep(1);
 	gpio_set_value(blue_led, 1);
 	sleep(1);
 	gpio_set_value(blue_led, 0);
 
+	// disconnect from server
+	omp_set_lock(&messageLock);
 	sendEvent(sockfd, disconnect);
+	omp_unset_lock(&messageLock);
 	close(sockfd);
 	
 	// close fd's
@@ -483,7 +497,7 @@ int main(int argc, char *argv[])
 	motion_fd = gpio_fd_close(motion_sensor);
 	smoke_fd = gpio_fd_close(smoke_sensor);
 
-	// unexport
+	// unexport gpio's
 	for (i = 0; i < 4; ++i) {
 		
 		gpio_unexport(led_array[i]);
