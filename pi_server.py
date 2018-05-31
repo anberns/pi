@@ -14,7 +14,6 @@ import RPi.GPIO as GPIO
 
 # thread locks
 led_lock = threading.Lock() # controls access to led screen
-count_lock = threading.Lock()
 event_lock = threading.Lock() # controls access to buzzer
 global_var_lock = threading.Lock()
 
@@ -35,15 +34,15 @@ draw.rectangle((0,0,width,height), outline=0, fill=0)
 
 # display zones
 top = 0 
-ztop0 = top
+ztop0 = top 		#ip address or name of client
 zbottom0 = ztop0+8
-ztop1 = zbottom0+8 
+ztop1 = zbottom0+8  #temp
 zbottom1 = ztop1+8
-ztop2 = zbottom1+2 
+ztop2 = zbottom1+2  #sound alert
 zbottom2 = ztop2+8
-ztop3 = zbottom2+2 
+ztop3 = zbottom2+2  #motion alert
 zbottom3 = ztop3+8
-ztop4 = zbottom3+2 
+ztop4 = zbottom3+2  #smoke alert
 zbottom4 = ztop4+8
 bottom = height 
 x=0
@@ -56,26 +55,15 @@ serverSocket = socket(AF_INET, SOCK_STREAM)
 serverSocket.bind(('', int(sys.argv[1]))) 
 serverSocket.listen(1)
 
-# array for holding message counts
-count_array = [0,0,0]
-smoke_index = 0
-sound_index = 1
-motion_index = 2
-
 # global emergency / alert flags
-smoke_emer = 0
-sound_alert = 0
-motion_emer = 0
 smoke_event = 0
-sound_event = 0
-motion_event = 0
 
-global current_temp # global temperature variable
-global sound_freq # global sound event 'counter'
-global motion_freq
+global current_temp 	#global temperature variable
+global sound_freq 		#global sound event 'counter'
+global motion_freq		#global motion event 'counter'
 
-# global select pressed variable
-global select_pressed
+# global off button pressed variable
+global end
 
 # global settings variables
 global temp_low 
@@ -89,8 +77,8 @@ GPIO.setup(buzzer, GPIO.OUT)
 GPIO.output(buzzer, True)
 
 # buttons
-select_button = 19
-GPIO.setup(select_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+off_button = 19
+GPIO.setup(off_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
 left_button = 13
 GPIO.setup(left_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
@@ -104,8 +92,8 @@ GPIO.setup(down_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 right_button = 5
 GPIO.setup(right_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
+# called when temp message received from client
 def updateTemp(temp):
-	print (temp)
 	global current_temp
 
 	global_var_lock.acquire()
@@ -119,8 +107,7 @@ def updateTemp(temp):
 	disp.display()
 	led_lock.release()
 
-	#connectionSocket.send(("rec").encode())
-
+# checks that temp is within set range, alerts if not
 def monitorTemp():
 	global current_temp
 	global temp_low 
@@ -133,10 +120,8 @@ def monitorTemp():
 		float_temp = float(local_temp[5:9])
 		global_var_lock.release()
 
-		# buzz if temp out of range
+		# buzz and display alert if temp out of range
 		if float_temp > float(temp_high) or float_temp < float(temp_low):
-			print(local_temp)
-			print(temp_high)
 			event_lock.acquire()
 			GPIO.output(buzzer, False)
 			time.sleep(.01)
@@ -156,10 +141,10 @@ def monitorTemp():
 			disp.image(image)
 			disp.display()
 			led_lock.release()
-		time.sleep(4)
+		time.sleep(4) #save cpu usage during while loop
 
+# responds to sound messages based on sensitivity settings
 def soundEvent():
-	print ("sound")
 	global sound_freq
 	global sound_level
 
@@ -172,8 +157,7 @@ def soundEvent():
 	sound_freq = int(time.time())
 
 	# check settings for sensitivity, alert if needed
-
-	if local_level == 2:
+	if local_level == 2:  #any sound message causes alert
 			led_lock.acquire()
 			draw.rectangle((0,ztop2,width,zbottom2), outline=0, fill=0)
 			draw.text((x, ztop2), "SOUND ALERT", font=font, fill=255)
@@ -193,7 +177,7 @@ def soundEvent():
 			disp.display()
 			led_lock.release()
 
-	elif local_level == 1 and elasped <= 2:
+	elif local_level == 1 and elasped <= 2:  #sustained sound causes alert
 			led_lock.acquire()
 			draw.rectangle((0,ztop2,width,zbottom2), outline=0, fill=0)
 			draw.text((x, ztop2), "SOUND ALERT", font=font, fill=255)
@@ -212,29 +196,14 @@ def soundEvent():
 			disp.image(image)
 			disp.display()
 			led_lock.release()
-	"""
-	else:
 
-		led_lock.acquire()
-		draw.rectangle((0,ztop2,width,zbottom2), outline=0, fill=0)
-		draw.text((x, ztop2), "sound", font=font, fill=255)
-		disp.image(image)
-		disp.display()
-		led_lock.release()
-		time.sleep(2)
-		led_lock.acquire()
-		draw.rectangle((0,ztop2,width,zbottom2), outline=0, fill=0)
-		disp.image(image)
-		disp.display()
-		led_lock.release()
-		"""
+	# setting of 0 ignores sensor messages
 
-	#connectionSocket.send(("rec").encode())
-
+# responds to smoke messages, alerts until smoke dissipates
 def smokeEvent():
-	print ("smoke")
 	global smoke_event
 
+	#first smoke message sounds alarm until second received
 	led_lock.acquire()
 	draw.rectangle((0,ztop4,width,zbottom4), outline=0, fill=0)
 	draw.text((x, ztop4), "SMOKE EMERGENCY", font=font, fill=255)
@@ -257,16 +226,15 @@ def smokeEvent():
 		local_smoke = smoke_event
 		event_lock.release()
 
+	# clear alert
 	led_lock.acquire()
 	draw.rectangle((0,ztop4,width,zbottom4), outline=0, fill=0)
 	disp.image(image)
 	disp.display()
 	led_lock.release()
 
-	#connectionSocket.send(("rec").encode())
-
+# responds to motion messages based on sensitivity settings
 def motionEvent():
-	print ("motion")
 	global motion_freq
 	global motion_level
 
@@ -280,7 +248,7 @@ def motionEvent():
 
 	# check settings for sensitivity, alert if needed
 
-	if local_level == 2:
+	if local_level == 2:  #any message creates alert
 			led_lock.acquire()
 			draw.rectangle((0,ztop3,width,zbottom3), outline=0, fill=0)
 			draw.text((x, ztop3), "MOTION ALERT", font=font, fill=255)
@@ -300,7 +268,7 @@ def motionEvent():
 			disp.display()
 			led_lock.release()
 
-	elif local_level == 1 and elasped <= 2:
+	elif local_level == 1 and elasped <= 2:  #sustained motion creates alert
 			led_lock.acquire()
 			draw.rectangle((0,ztop3,width,zbottom3), outline=0, fill=0)
 			draw.text((x, ztop3), "MOTION ALERT", font=font, fill=255)
@@ -319,65 +287,66 @@ def motionEvent():
 			disp.image(image)
 			disp.display()
 			led_lock.release()
-	"""
-	else:
 
-		led_lock.acquire()
-		draw.rectangle((0,ztop3,width,zbottom3), outline=0, fill=0)
-		draw.text((x, ztop3), "motion", font=font, fill=255)
-		disp.image(image)
-		disp.display()
-		led_lock.release()
-		time.sleep(2)
-		led_lock.acquire()
-		draw.rectangle((0,ztop3,width,zbottom3), outline=0, fill=0)		
-		disp.image(image)
-		disp.display()
-		led_lock.release()
-"""
+	# setting of 0 ignores messages
+'''
+# polls the off button
+def watchOff():
+	global end
 
-	#connectionSocket.send(("rec").encode())
+	#thread waits for off button press
+	# help with polling from sourceforge.net
+	GPIO.wait_for_edge(off_button, GPIO.RISING)
+	global_var_lock.acquire()
+	end = 1
+	global_var_lock.release()
+'''
+		
 
-def runSelect():
+# runs the settings menu process
+def runMenu():
 
 	while 1:
 
+		#thread waits for initial right button press
 		# help with polling from sourceforge.net
 		GPIO.wait_for_edge(right_button, GPIO.RISING)
-		y_loc = 0 # pointer begins on low temp
+		pointer_location = 0 	#menu pointer begins on low temp
 		global current_temp
-		global select_pressed
 		led_lock.acquire()
 			
-		displaySettings(y_loc)
+		displaySettings(pointer_location)
 
-		# select button exits settings
+		# left button from main menu exits settings
 		while GPIO.input(left_button) != 1:
-			time.sleep(.1)
+			time.sleep(.1)  #conserve cpu by blocking loop
 
+			#move pointer on display based on up and down presses
 			if GPIO.input(up_button):
-				time.sleep(.05)
-				if y_loc > 0:
-					y_loc = y_loc -1
-					displaySettings(y_loc)
+				time.sleep(.05)  #prevent multiple movements per short press
+				if pointer_location > 0:
+					pointer_location = pointer_location -1
+					displaySettings(pointer_location)
 			elif GPIO.input(down_button):
 				time.sleep(.05)
-				if y_loc < 3:
-					y_loc = y_loc +1
-					displaySettings(y_loc)
+				if pointer_location < 3:
+					pointer_location = pointer_location +1
+					displaySettings(pointer_location)
 
+			#another right press allows for setting adjusment based on pointer position
 			elif GPIO.input(right_button):
 				time.sleep(.05)
-				if y_loc == 0:
+				if pointer_location == 0:
 					adjustLowTemp()
-				elif y_loc == 1:
+				elif pointer_location == 1:
 					adjustHighTemp()
-				elif y_loc == 2:
+				elif pointer_location == 2:
 					adjustSoundLevel()
-				elif y_loc == 3:
+				elif pointer_location == 3:
 					adjustMotionLevel()
-				displaySettings(y_loc)
+				displaySettings(pointer_location)
 
+		#redraw default dispay
 		draw.rectangle((0,0,width,height), outline=0, fill=0)
 		draw.text((x, ztop0), addr[0], font=font, fill=255)
 		global_var_lock.acquire()
@@ -387,11 +356,9 @@ def runSelect():
 		disp.display()
 		led_lock.release()
 
+# allows temp at low range to be adjusted using up and down buttons
 def adjustLowTemp():
 	global temp_low 
-	global temp_high 
-	global sound_level 
-	global motion_level 
 
 	draw.rectangle((0,ztop0,width,zbottom4), outline=0, fill=0)
 	draw.text((x, ztop0), "Low temperature", font=font, fill=255)
@@ -399,9 +366,11 @@ def adjustLowTemp():
 	disp.image(image)
 	disp.display()
 
+	#left button returns to main menu
 	while GPIO.input(left_button) != 1:
-		time.sleep(.1)
+		time.sleep(.1) #conserve cpu
 
+		#adjust temp
 		if GPIO.input(up_button):
 			time.sleep(.05)
 			if temp_low < 125:
@@ -419,11 +388,10 @@ def adjustLowTemp():
 				disp.image(image)
 				disp.display()
 
+# allows temp at high range to be adjusted using up and down buttons
+# can be refactored
 def adjustHighTemp():
-	global temp_low 
 	global temp_high 
-	global sound_level 
-	global motion_level 
 
 	draw.rectangle((0,ztop0,width,zbottom4), outline=0, fill=0)
 	draw.text((x, ztop0), "High temperature", font=font, fill=255)
@@ -450,11 +418,9 @@ def adjustHighTemp():
 				disp.image(image)
 				disp.display()
 
+# allows sound sensitivity to be adjusted
 def adjustSoundLevel():
-	global temp_low 
-	global temp_high 
 	global sound_level 
-	global motion_level 
 
 	draw.rectangle((0,ztop0,width,zbottom4), outline=0, fill=0)
 	draw.text((x, ztop0), "Sound level", font=font, fill=255)
@@ -462,6 +428,7 @@ def adjustSoundLevel():
 	disp.image(image)
 	disp.display()
 
+	#left button exits to main menu
 	while GPIO.input(left_button) != 1:
 		time.sleep(.1)
 
@@ -482,10 +449,9 @@ def adjustSoundLevel():
 				disp.image(image)
 				disp.display()
 
+# allows motion sensitivity to be adjusted
+# can be refactored with sound
 def adjustMotionLevel():
-	global temp_low 
-	global temp_high 
-	global sound_level 
 	global motion_level 
 
 	draw.rectangle((0,ztop0,width,zbottom4), outline=0, fill=0)
@@ -514,13 +480,14 @@ def adjustMotionLevel():
 				disp.image(image)
 				disp.display()
 
-def displaySettings(y_loc):
+# displays main menu on lcd based on pointer location movement
+def displaySettings(pointer_location):
 	global temp_low 
 	global temp_high 
 	global sound_level 
 	global motion_level 
 
-	if y_loc == 0:
+	if pointer_location == 0:
 		draw.rectangle((0,ztop0,width,zbottom4), outline=0, fill=0)
 		draw.text((x, ztop0), "Adjust settings", font=font, fill=255)
 		draw.text((x, ztop1), "->Low temperature: " + str(temp_low), font=font, fill=255)
@@ -529,7 +496,7 @@ def displaySettings(y_loc):
 		draw.text((x, ztop4), "Motion sensitivity: " + str(motion_level), font=font, fill=255)
 		disp.image(image)
 		disp.display()
-	elif y_loc == 1:
+	elif pointer_location == 1:
 		draw.rectangle((0,ztop0,width,zbottom4), outline=0, fill=0)
 		draw.text((x, ztop0), "Adjust settings", font=font, fill=255)
 		draw.text((x, ztop1), "Low temperature: " + str(temp_low), font=font, fill=255)
@@ -538,7 +505,7 @@ def displaySettings(y_loc):
 		draw.text((x, ztop4), "Motion sensitivity: " + str(motion_level), font=font, fill=255)
 		disp.image(image)
 		disp.display()
-	elif y_loc == 2:
+	elif pointer_location == 2:
 		draw.rectangle((0,ztop0,width,zbottom4), outline=0, fill=0)
 		draw.text((x, ztop0), "Adjust settings", font=font, fill=255)
 		draw.text((x, ztop1), "Low temperature: " + str(temp_low), font=font, fill=255)
@@ -547,7 +514,7 @@ def displaySettings(y_loc):
 		draw.text((x, ztop4), "Motion sensitivity: " + str(motion_level), font=font, fill=255)
 		disp.image(image)
 		disp.display()
-	elif y_loc == 3:
+	elif pointer_location == 3:
 		draw.rectangle((0,ztop0,width,zbottom4), outline=0, fill=0)
 		draw.text((x, ztop0), "Adjust settings", font=font, fill=255)
 		draw.text((x, ztop1), "Low temperature: " + str(temp_low), font=font, fill=255)
@@ -557,13 +524,18 @@ def displaySettings(y_loc):
 		disp.image(image)
 		disp.display()
 
+#set end to 0
+global_var_lock.acquire()
+end = 0
+global_var_lock.release()
+
 # loop through connections from listening port until CTRL-C
 while 1:
 	
 	connectionSocket, addr = serverSocket.accept()
 	print ("Connection from " + addr[0])
 
-	# read from or create file for this devices settings
+	# read from or create file for this device's settings
 	device_settings_path = "./data/" + addr[0] + "_settings"
 
 	if os.path.isfile(device_settings_path):
@@ -577,7 +549,7 @@ while 1:
 		print (motion_level)
 		infile.close()
 
-	else :
+	else : #store defaults in new file
 		temp_low = 50
 		temp_high = 90
 		sound_level = 2
@@ -599,21 +571,30 @@ while 1:
 	disp.image(image)
 	disp.display()
 
-	# settings menu thread
-	thread.start_new_thread(runSelect, ())
+	# launch settings menu thread
+	thread.start_new_thread(runMenu, ())
 
-	#temp monitoring thread
+	# launch temp monitoring thread
 	thread.start_new_thread(monitorTemp, ())
+	
+	'''
+	# launch off button monitoring thread
+	thread.start_new_thread(watchOff, ())
+	'''
 
-
-	# set current time for global event variables
+	# set current time for global event message counters
 	sound_freq = int(time.time())
 	motion_freq = int(time.time())
 
-	#sensor monitoring 
+	#set end to 0
+	global_var_lock.acquire()
+	end = 0
+	global_var_lock.release()
+
+	#sensor monitoring, new thread created when message received 
 	while(1):
 
-
+		#wait for message from client
 		message = connectionSocket.recv(1024).decode()
 	
 		# sensor concurrency
@@ -642,8 +623,6 @@ while 1:
 		elif message == "disconnect":
 			break
 		
-		#else:
-			#connectionSocket.send(("error").encode())
 	
 	# save updated settings
 	outfile = open(device_settings_path, "w")
