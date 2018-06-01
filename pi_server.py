@@ -289,19 +289,6 @@ def motionEvent():
 			led_lock.release()
 
 	# setting of 0 ignores messages
-'''
-# polls the off button
-def watchOff():
-	global end
-
-	#thread waits for off button press
-	# help with polling from sourceforge.net
-	GPIO.wait_for_edge(off_button, GPIO.RISING)
-	global_var_lock.acquire()
-	end = 1
-	global_var_lock.release()
-'''
-		
 
 # runs the settings menu process
 def runMenu():
@@ -337,9 +324,9 @@ def runMenu():
 			elif GPIO.input(right_button):
 				time.sleep(.05)
 				if pointer_location == 0:
-					adjustLowTemp()
-				elif pointer_location == 1:
 					adjustHighTemp()
+				elif pointer_location == 1:
+					adjustLowTemp()
 				elif pointer_location == 2:
 					adjustSoundLevel()
 				elif pointer_location == 3:
@@ -490,8 +477,8 @@ def displaySettings(pointer_location):
 	if pointer_location == 0:
 		draw.rectangle((0,ztop0,width,zbottom4), outline=0, fill=0)
 		draw.text((x, ztop0), "Adjust settings", font=font, fill=255)
-		draw.text((x, ztop1), "->Low temperature: " + str(temp_low), font=font, fill=255)
-		draw.text((x, ztop2), "High temperature: " + str(temp_high), font=font, fill=255)
+		draw.text((x, ztop1), "->High temp: " + str(temp_high), font=font, fill=255)
+		draw.text((x, ztop2), "Low temperature: " + str(temp_low), font=font, fill=255)
 		draw.text((x, ztop3), "Sound sensitivity: " + str(sound_level), font=font, fill=255)
 		draw.text((x, ztop4), "Motion sensitivity: " + str(motion_level), font=font, fill=255)
 		disp.image(image)
@@ -499,8 +486,8 @@ def displaySettings(pointer_location):
 	elif pointer_location == 1:
 		draw.rectangle((0,ztop0,width,zbottom4), outline=0, fill=0)
 		draw.text((x, ztop0), "Adjust settings", font=font, fill=255)
-		draw.text((x, ztop1), "Low temperature: " + str(temp_low), font=font, fill=255)
-		draw.text((x, ztop2), "->High temperature: " + str(temp_high), font=font, fill=255)
+		draw.text((x, ztop1), "High temperature: " + str(temp_high), font=font, fill=255)
+		draw.text((x, ztop2), "->Low temp: " + str(temp_low), font=font, fill=255)
 		draw.text((x, ztop3), "Sound sensitivity: " + str(sound_level), font=font, fill=255)
 		draw.text((x, ztop4), "Motion sensitivity: " + str(motion_level), font=font, fill=255)
 		disp.image(image)
@@ -508,19 +495,19 @@ def displaySettings(pointer_location):
 	elif pointer_location == 2:
 		draw.rectangle((0,ztop0,width,zbottom4), outline=0, fill=0)
 		draw.text((x, ztop0), "Adjust settings", font=font, fill=255)
-		draw.text((x, ztop1), "Low temperature: " + str(temp_low), font=font, fill=255)
-		draw.text((x, ztop2), "High temperature: " + str(temp_high), font=font, fill=255)
-		draw.text((x, ztop3), "->Sound sensitivity: " + str(sound_level), font=font, fill=255)
+		draw.text((x, ztop1), "High temperature: " + str(temp_high), font=font, fill=255)
+		draw.text((x, ztop2), "Low temperature: " + str(temp_low), font=font, fill=255)
+		draw.text((x, ztop3), "->Sound sens: " + str(sound_level), font=font, fill=255)
 		draw.text((x, ztop4), "Motion sensitivity: " + str(motion_level), font=font, fill=255)
 		disp.image(image)
 		disp.display()
 	elif pointer_location == 3:
 		draw.rectangle((0,ztop0,width,zbottom4), outline=0, fill=0)
 		draw.text((x, ztop0), "Adjust settings", font=font, fill=255)
-		draw.text((x, ztop1), "Low temperature: " + str(temp_low), font=font, fill=255)
-		draw.text((x, ztop2), "High temperature: " + str(temp_high), font=font, fill=255)
+		draw.text((x, ztop1), "High temperature: " + str(temp_high), font=font, fill=255)
+		draw.text((x, ztop2), "Low temperature: " + str(temp_low), font=font, fill=255)
 		draw.text((x, ztop3), "Sound sensitivity: " + str(sound_level), font=font, fill=255)
-		draw.text((x, ztop4), "->Motion sensitivity: " + str(motion_level), font=font, fill=255)
+		draw.text((x, ztop4), "->Motion sens: " + str(motion_level), font=font, fill=255)
 		disp.image(image)
 		disp.display()
 
@@ -529,120 +516,110 @@ global_var_lock.acquire()
 end = 0
 global_var_lock.release()
 
-# loop through connections from listening port until CTRL-C
-while 1:
-	
-	connectionSocket, addr = serverSocket.accept()
-	print ("Connection from " + addr[0])
+#wait for connection from client
+connectionSocket, addr = serverSocket.accept()
 
-	# read from or create file for this device's settings
-	device_settings_path = "./data/" + addr[0] + "_settings"
+# read from or create file for this device's settings
+device_settings_path = "./data/" + addr[0] + "_settings"
 
-	if os.path.isfile(device_settings_path):
-		infile = open(device_settings_path, "r")
-		items = infile.readline().split()
-		temp_low = int(items[0])
-		temp_high = int(items[1])
-		sound_level = int(items[2])
-		motion_level = int(items[3])
-		print (temp_low)
-		print (motion_level)
-		infile.close()
+if os.path.isfile(device_settings_path):
+	infile = open(device_settings_path, "r")
+	items = infile.readline().split()
+	temp_low = int(items[0])
+	temp_high = int(items[1])
+	sound_level = int(items[2])
+	motion_level = int(items[3])
+	infile.close()
 
-	else : #store defaults in new file
-		temp_low = 50
-		temp_high = 90
-		sound_level = 2
-		motion_level = 2
-		outfile = open(device_settings_path, "w+")
-		outfile.write(str(temp_low) + " ")
-		outfile.write(str(temp_high) + " ")
-		outfile.write(str(sound_level) + " ")
-		outfile.write(str(motion_level) + " ")
-		outfile.close()
-
-	# start display and sensor reporting
-	draw.text((x, ztop0), "Hello", font=font, fill=255)
-	disp.image(image)
-	disp.display()
-	time.sleep(2)
-	draw.rectangle((0,0,width,height), outline=0, fill=0)
-	draw.text((x, ztop0), addr[0], font=font, fill=255)
-	disp.image(image)
-	disp.display()
-
-	# launch settings menu thread
-	thread.start_new_thread(runMenu, ())
-
-	# launch temp monitoring thread
-	thread.start_new_thread(monitorTemp, ())
-	
-	'''
-	# launch off button monitoring thread
-	thread.start_new_thread(watchOff, ())
-	'''
-
-	# set current time for global event message counters
-	sound_freq = int(time.time())
-	motion_freq = int(time.time())
-
-	#set end to 0
-	global_var_lock.acquire()
-	end = 0
-	global_var_lock.release()
-
-	#sensor monitoring, new thread created when message received 
-	while(1):
-
-		#wait for message from client
-		message = connectionSocket.recv(1024).decode()
-	
-		# sensor concurrency
-		if 'temp' in message:
-			thread.start_new_thread(updateTemp, (message,))
-
-		elif message == "smoke":
-
-			event_lock.acquire()
-
-			if smoke_event == 0:
-				smoke_event = 1
-				event_lock.release()
-				thread.start_new_thread(smokeEvent, ())
-
-			else:
-				smoke_event = 0
-				event_lock.release()
-
-		elif message == "sound":
-			thread.start_new_thread(soundEvent, ())
-
-		elif message == "motion":
-			thread.start_new_thread(motionEvent, ())
-
-		elif message == "disconnect":
-			break
-		
-	
-	# save updated settings
-	outfile = open(device_settings_path, "w")
+else : #store defaults in new file
+	temp_low = 50
+	temp_high = 90
+	sound_level = 2
+	motion_level = 2
+	outfile = open(device_settings_path, "w+")
 	outfile.write(str(temp_low) + " ")
 	outfile.write(str(temp_high) + " ")
 	outfile.write(str(sound_level) + " ")
 	outfile.write(str(motion_level) + " ")
 	outfile.close()
 
-	# close connection but not server process
-	print ("Closing connection from " + addr[0])
-	disp.clear()
-	disp.display()
-	draw.rectangle((0,0,width,height), outline=0, fill=0)
-	draw.text((x, top), "Goodbye", font=font, fill=255)
-	disp.image(image)
-	disp.display()
-	time.sleep(2)
-	disp.clear()
-	disp.display()
-	connectionSocket.close()
+# start display and sensor reporting
+draw.text((x, ztop0), "Hello", font=font, fill=255)
+disp.image(image)
+disp.display()
+time.sleep(2)
+draw.rectangle((0,0,width,height), outline=0, fill=0)
+draw.text((x, ztop0), addr[0], font=font, fill=255)
+disp.image(image)
+disp.display()
+
+# launch settings menu thread
+thread.start_new_thread(runMenu, ())
+
+# launch temp monitoring thread
+thread.start_new_thread(monitorTemp, ())
+
+# set current time for global event message counters
+sound_freq = int(time.time())
+motion_freq = int(time.time())
+
+#set end to 0
+global_var_lock.acquire()
+end = 0
+global_var_lock.release()
+
+#sensor monitoring, new thread created when message received 
+while(1):
+
+	#wait for message from client
+	message = connectionSocket.recv(1024).decode()
+
+	# sensor concurrency
+	if 'temp' in message:
+		thread.start_new_thread(updateTemp, (message,))
+
+	elif message == "smoke":
+
+		event_lock.acquire()
+
+		if smoke_event == 0:
+			smoke_event = 1
+			event_lock.release()
+			thread.start_new_thread(smokeEvent, ())
+
+		else:
+			smoke_event = 0
+			event_lock.release()
+
+	elif message == "sound":
+		thread.start_new_thread(soundEvent, ())
+
+	elif message == "motion":
+		thread.start_new_thread(motionEvent, ())
+
+	elif message == "disconnect":
+		break
+	
+
+# save updated settings
+outfile = open(device_settings_path, "w")
+outfile.write(str(temp_low) + " ")
+outfile.write(str(temp_high) + " ")
+outfile.write(str(sound_level) + " ")
+outfile.write(str(motion_level) + " ")
+outfile.close()
+
+# close connection 
+print ("Closing connection from " + addr[0])
+disp.clear()
+disp.display()
+draw.rectangle((0,0,width,height), outline=0, fill=0)
+draw.text((x, top), "Goodbye", font=font, fill=255)
+disp.image(image)
+disp.display()
+time.sleep(2)
+disp.clear()
+disp.display()
+connectionSocket.close()
 
 
