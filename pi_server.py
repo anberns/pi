@@ -13,9 +13,13 @@ from PIL import ImageFont
 import RPi.GPIO as GPIO
 
 # thread locks
-led_lock = threading.Lock() # controls access to led screen
-event_lock = threading.Lock() # controls access to buzzer
-global_var_lock = threading.Lock()
+try:
+	led_lock = threading.Lock() # controls access to led screen
+	event_lock = threading.Lock() # controls access to buzzer
+	global_var_lock = threading.Lock()
+except IOError:
+	print("Unable to create thread locks")
+	exit(1)
 
 # setup lcd, from Adafruit_Python_SSD1306
 RST = None
@@ -23,14 +27,20 @@ DC = 23
 SPI_PORT = 0
 SPI_DEVICE = 0
 disp = Adafruit_SSD1306.SSD1306_128_64(rst=RST)
-disp.begin()
-disp.clear()
-disp.display()
-width = disp.width
-height = disp.height
-image = Image.new('1', (width, height))
-draw = ImageDraw.Draw(image)
-draw.rectangle((0,0,width,height), outline=0, fill=0)
+
+try:
+	disp.begin()
+except IOError:
+	print("Unable to connect to display")
+	exit(1)
+else:
+	disp.clear()
+	disp.display()
+	width = disp.width
+	height = disp.height
+	image = Image.new('1', (width, height))
+	draw = ImageDraw.Draw(image)
+	draw.rectangle((0,0,width,height), outline=0, fill=0)
 
 # display zones
 top = 0 
@@ -51,12 +61,16 @@ x=0
 font = ImageFont.load_default()
 
 # sockets
-serverSocket = socket(AF_INET, SOCK_STREAM)
-serverSocket.bind(('', int(sys.argv[1]))) 
-serverSocket.listen(1)
+try:
+	serverSocket = socket(AF_INET, SOCK_STREAM)
+	serverSocket.bind(('', int(sys.argv[1]))) 
+	serverSocket.listen(1)
+except IOError:
+	print("Unable to create listening socket")
+	exit(1)
 
 # global emergency / alert flags
-smoke_event = 0
+global smoke_event
 
 global current_temp 	#global temperature variable
 global sound_freq 		#global sound event 'counter'
@@ -73,24 +87,30 @@ global motion_level
 
 # buzzer setup
 buzzer = 18
-GPIO.setup(buzzer, GPIO.OUT)
-GPIO.output(buzzer, True)
+try:
+	GPIO.setup(buzzer, GPIO.OUT)
+except IOError:
+	print("Unable to setup buzzer")
+	exit(1)
+else:
+	GPIO.output(buzzer, True)
 
-# buttons
+# button setup
 off_button = 19
-GPIO.setup(off_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-
 left_button = 13
-GPIO.setup(left_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-
 up_button = 6
-GPIO.setup(up_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-
 down_button = 21
-GPIO.setup(down_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-
 right_button = 5
-GPIO.setup(right_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+try:
+	GPIO.setup(off_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+	GPIO.setup(left_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+	GPIO.setup(up_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+	GPIO.setup(down_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+	GPIO.setup(right_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+except IOError:
+	print("Unable to setup buttons")
+	exit(1)
 
 # called when temp message received from client
 def updateTemp(temp):
@@ -511,8 +531,8 @@ def displaySettings(pointer_location):
 		disp.image(image)
 		disp.display()
 
-#set end to 0
 global_var_lock.acquire()
+smoke_event = 0
 end = 0
 global_var_lock.release()
 
@@ -522,26 +542,33 @@ connectionSocket, addr = serverSocket.accept()
 # read from or create file for this device's settings
 device_settings_path = "./data/" + addr[0] + "_settings"
 
-if os.path.isfile(device_settings_path):
-	infile = open(device_settings_path, "r")
-	items = infile.readline().split()
-	temp_low = int(items[0])
-	temp_high = int(items[1])
-	sound_level = int(items[2])
-	motion_level = int(items[3])
-	infile.close()
+try:
+	if os.path.isfile(device_settings_path):
+		infile = open(device_settings_path, "r")
+		items = infile.readline().split()
+		temp_low = int(items[0])
+		temp_high = int(items[1])
+		sound_level = int(items[2])
+		motion_level = int(items[3])
+		infile.close()
 
-else : #store defaults in new file
+	else : #store defaults in new file
+		temp_low = 50
+		temp_high = 90
+		sound_level = 2
+		motion_level = 2
+		outfile = open(device_settings_path, "w+")
+		outfile.write(str(temp_low) + " ")
+		outfile.write(str(temp_high) + " ")
+		outfile.write(str(sound_level) + " ")
+		outfile.write(str(motion_level) + " ")
+		outfile.close()
+except IOError:
+	print("Unable to access device settings file, using defaults")
 	temp_low = 50
 	temp_high = 90
 	sound_level = 2
 	motion_level = 2
-	outfile = open(device_settings_path, "w+")
-	outfile.write(str(temp_low) + " ")
-	outfile.write(str(temp_high) + " ")
-	outfile.write(str(sound_level) + " ")
-	outfile.write(str(motion_level) + " ")
-	outfile.close()
 
 # start display and sensor reporting
 draw.text((x, ztop0), "Hello", font=font, fill=255)
@@ -554,10 +581,16 @@ disp.image(image)
 disp.display()
 
 # launch settings menu thread
-thread.start_new_thread(runMenu, ())
+try:
+	thread.start_new_thread(runMenu, ())
+except IOError:
+	print("Menu thread failed")
 
 # launch temp monitoring thread
-thread.start_new_thread(monitorTemp, ())
+try:
+	thread.start_new_thread(monitorTemp, ())
+except IOError:
+	print("Temperature monitoring thread failed")
 
 # set current time for global event message counters
 sound_freq = int(time.time())
@@ -576,7 +609,10 @@ while(1):
 
 	# sensor concurrency
 	if 'temp' in message:
-		thread.start_new_thread(updateTemp, (message,))
+		try:
+			thread.start_new_thread(updateTemp, (message,))
+		except IOError:
+			print("Temperature update thread failed")
 
 	elif message == "smoke":
 
@@ -585,29 +621,44 @@ while(1):
 		if smoke_event == 0:
 			smoke_event = 1
 			event_lock.release()
-			thread.start_new_thread(smokeEvent, ())
 
+			#if new thread fails, take over main thread
+			try:
+				thread.start_new_thread(smokeEvent, ())
+			except IOError:
+				print("Thread spawn failed")
+				smokeEvent()
 		else:
 			smoke_event = 0
 			event_lock.release()
 
 	elif message == "sound":
-		thread.start_new_thread(soundEvent, ())
+		try:
+			thread.start_new_thread(soundEvent, ())
+		except IOError:
+			print("Thread spawn failed")
 
 	elif message == "motion":
-		thread.start_new_thread(motionEvent, ())
+		try:
+			thread.start_new_thread(motionEvent, ())
+		except IOError:
+			print("Thread spawn failed")
 
 	elif message == "disconnect":
 		break
 	
 
 # save updated settings
-outfile = open(device_settings_path, "w")
-outfile.write(str(temp_low) + " ")
-outfile.write(str(temp_high) + " ")
-outfile.write(str(sound_level) + " ")
-outfile.write(str(motion_level) + " ")
-outfile.close()
+try:
+	outfile = open(device_settings_path, "w")
+except IOError:
+	print("Unable to save settings")
+else:
+	outfile.write(str(temp_low) + " ")
+	outfile.write(str(temp_high) + " ")
+	outfile.write(str(sound_level) + " ")
+	outfile.write(str(motion_level) + " ")
+	outfile.close()
 
 # close connection 
 print ("Closing connection from " + addr[0])
@@ -621,5 +672,3 @@ time.sleep(2)
 disp.clear()
 disp.display()
 connectionSocket.close()
-
-
