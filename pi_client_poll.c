@@ -232,10 +232,14 @@ void closeConnection(int sockfd) {
     close(sockfd);
 }
 
-void sendEvent(int sockfd, char *event) {
+int sendEvent(int sockfd, char *event) {
 	// send message to server
     int len = strlen(event);
     int bytes_sent = send(sockfd, event, len, 0);
+	if (bytes_sent != len) {
+		return -1;
+	}
+	return 0;
 }
 
 int main(int argc, char *argv[])
@@ -245,7 +249,7 @@ int main(int argc, char *argv[])
 	char *smoke = "smoke";
 	char *motion = "motion";
 
-	int end = 0; // shared varible to kill all threads before shutdown
+	int end = 0; // shared variable to kill all threads before shutdown
 
 	// assign gpio pins
 	const int red_led = 21; // smoke
@@ -267,29 +271,53 @@ int main(int argc, char *argv[])
 	int i;
 	for (i = 0; i < 4; ++i) {
 		
-		gpio_export(led_array[i]);
+		if (gpio_export(led_array[i]) != 0) {
+			// error already reported by function
+			exit(1);
+		}
 	}
 
 	for (i = 0; i < 4; ++i) {
 		
-		gpio_export(sensor_array[i]);
+		if (gpio_export(sensor_array[i]) != 0) {
+			// error already reported by function
+			exit(1);
+		}
 	}
 
+	// leds out
 	for (i = 0; i < 4; ++i) {
 		
-		gpio_set_dir(led_array[i], 1); // 1 is out
+		if (gpio_set_dir(led_array[i], 1) != 0) { // 1 is out
+			// error already reported by function
+			exit(1);
+		}
 	}
 
+	// sensor in
 	for (i = 0; i < 3; ++i) {
 		
-		gpio_set_dir(sensor_array[i], 0); // 0 is in
-		gpio_set_edge(sensor_array[i], "rising");
+		if (gpio_set_dir(sensor_array[i], 0) != 0) { // 0 is in
+			// error already reported by function
+			exit(1);
+		}
+		if (gpio_set_edge(sensor_array[i], "rising") != 0) { 
+			// error already reported by function
+			exit(1);
+		}
 	}
 
-	// smoke is both, detection and end of detection
-	gpio_set_dir(sensor_array[3], 0); // 0 is in
-	gpio_set_edge(sensor_array[3], "both");
+	// smoke edge detection is both, detection and end of detection
+	if (gpio_set_dir(sensor_array[3], 0) != 0) { 
+		// error already reported by function
+		exit(1);
+	}
+	if (gpio_set_edge(sensor_array[3], "both") != 0) { 
+		// error already reported by function
+		exit(1);
+	}
 
+	// open gpio file descriptors
 	red_fd = gpio_fd_open(red_led);
 	blue_fd = gpio_fd_open(blue_led);
 	green_fd = gpio_fd_open(green_led);
@@ -337,7 +365,7 @@ int main(int argc, char *argv[])
 	omp_lock_t messageLock; // only one thread sends message to server at a time
 	omp_init_lock(&messageLock);
 	omp_set_num_threads(6);
-	#pragma omp parallel sections default(none), private(pfd, rc, buf), shared(nfds, end, sockfd, smoke, sound, motion, red_fd, blue_fd, green_fd, yellow_fd, sound_fd, touch_fd, motion_fd, smoke_fd)
+	#pragma omp parallel sections default(none), private(pfd, rc, buf), shared(messageLock, nfds, end, sockfd, smoke, sound, motion, red_fd, blue_fd, green_fd, yellow_fd, sound_fd, touch_fd, motion_fd, smoke_fd)
 	{
 		// temp sensor thread
 		#pragma omp section
@@ -358,6 +386,10 @@ int main(int argc, char *argv[])
 			// check temp file every 2 seconds, send temp if it has changed
 			while (!end) {
 				fd = open(path, O_RDONLY);
+				if (fd < 0) {
+					perror("open temp file");
+					break;
+				}
 				while ((numRead = read(fd, buf2, 256)) > 0) {
 					strncpy(tmpData, strstr(buf2, "t=") +2, 5); 
 					temp = strtof(tmpData, NULL);
@@ -367,7 +399,9 @@ int main(int argc, char *argv[])
 
 				if (strcmp(message, oldMessage) != 0) {
 					omp_set_lock(&messageLock);
-					sendEvent(sockfd, message);
+					if (sendEvent(sockfd, message) != 0) {
+						perror("sendEvent");
+					}
 					omp_unset_lock(&messageLock);
 					strcpy(oldMessage, message);
 				}
@@ -391,7 +425,9 @@ int main(int argc, char *argv[])
 					read(sound_fd, buf, sizeof(buf));
 					gpio_set_value(yellow_led, 1);
 					omp_set_lock(&messageLock);
-					sendEvent(sockfd, sound);
+					if (sendEvent(sockfd, sound) != 0) {
+						perror("sendEvent");
+					}
 					omp_unset_lock(&messageLock);
 					sleep(1);
 					gpio_set_value(yellow_led, 0);
@@ -403,6 +439,7 @@ int main(int argc, char *argv[])
 		// motion sensor polling thread
 		#pragma omp section
 		{
+			sleep(1); 
 			while (!end) {
 				pfd[0].fd = motion_fd;
 				pfd[0].events = POLLPRI;
@@ -415,7 +452,9 @@ int main(int argc, char *argv[])
 					read(motion_fd, buf, sizeof(buf));
 					gpio_set_value(green_led, 1);
 					omp_set_lock(&messageLock);
-					sendEvent(sockfd, motion);
+					if (sendEvent(sockfd, motion) != 0) {
+						perror("sendEvent");
+					}
 					omp_unset_lock(&messageLock);
 					sleep(1);
 					gpio_set_value(green_led, 0);
@@ -449,7 +488,9 @@ int main(int argc, char *argv[])
 
 					// send message to server for each edge change
 					omp_set_lock(&messageLock);
-					sendEvent(sockfd, smoke);
+					if (sendEvent(sockfd, smoke) != 0) {
+						perror("sendEvent");
+					}
 					omp_unset_lock(&messageLock);
 					sleep(1);
 					
@@ -483,7 +524,9 @@ int main(int argc, char *argv[])
 
 	// disconnect from server
 	omp_set_lock(&messageLock);
-	sendEvent(sockfd, disconnect);
+	if (sendEvent(sockfd, disconnect) != 0) {
+		perror("sendEvent");
+	}
 	omp_unset_lock(&messageLock);
 	close(sockfd);
 	
