@@ -17,13 +17,9 @@ from PIL import ImageFont
 import RPi.GPIO as GPIO
 
 # thread locks
-try:
-	led_lock = threading.Lock() # controls access to led screen
-	event_lock = threading.Lock() # controls access to buzzer
-	global_var_lock = threading.Lock()
-except IOError:
-	print("Unable to create thread locks")
-	exit(1)
+led_lock = threading.Lock() # controls access to led screen
+event_lock = threading.Lock() # controls access to buzzer
+global_var_lock = threading.Lock()
 
 # setup lcd, from Adafruit_Python_SSD1306
 RST = None
