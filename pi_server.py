@@ -1,4 +1,8 @@
 # Aaron Berns
+# 
+# to enable ad-hoc, uncomment changes to /etc/network/interfaces
+# to enable auto startup and shutdown, uncomment lines in ~/superscript
+# to remove superscript, comment out last line in .bashrc
 
 import os
 import thread
